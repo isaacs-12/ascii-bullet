@@ -6,6 +6,7 @@ from src.ascii_art import (
     BLTHLL_ASCII, get_startup_sequence, get_welcome_text,
     get_help_text, get_about_text
 )
+from src.filesystem import VirtualFileSystem
 
 
 class MainMenuState(BaseState):
@@ -17,7 +18,6 @@ class MainMenuState(BaseState):
         # Terminal state
         self.output_lines = []
         self.input_buffer = ""
-        self.prompt = "> "
         self.cursor_visible = True
         self.cursor_timer = 0
         self.max_lines = self.renderer.char_height - 2  # Leave room for input
@@ -35,6 +35,9 @@ class MainMenuState(BaseState):
         
         # Easter egg tracking
         self.secret_commands_found = set()
+        
+        # Virtual filesystem
+        self.filesystem = VirtualFileSystem()
     
     def enter(self):
         """Called when entering this state"""
@@ -85,7 +88,8 @@ class MainMenuState(BaseState):
                 
                 elif event.unicode and event.unicode.isprintable():
                     # Add character to input buffer
-                    if len(self.input_buffer) < self.renderer.char_width - len(self.prompt) - 2:
+                    prompt_len = len(self.get_prompt())
+                    if len(self.input_buffer) < self.renderer.char_width - prompt_len - 2:
                         self.input_buffer += event.unicode
     
     def update(self, dt):
@@ -121,6 +125,75 @@ class MainMenuState(BaseState):
         # Add welcome text
         for line in get_welcome_text():
             self.output_lines.append(line)
+
+    def _easter_egg_commands(self, cmd_lower):
+        """
+        Handle easter egg commands
+        
+        Args:
+            cmd_lower: The lowercase command string
+            
+        Returns:
+            True if command was handled, False otherwise
+        """
+        # Easter eggs!
+        if cmd_lower in ["hello", "hi"]:
+            self.add_output("Hello, human. Ready to dodge some bullets?")
+            self.add_output("")
+            return True
+        
+        elif cmd_lower == "whoami":
+            self.add_output("You are a brave pilot in a world of bullets.")
+            self.add_output("")
+            return True
+        
+        elif cmd_lower in ["sudo", "sudo su"]:
+            self.add_output("Nice try. You already have all the permissions here.")
+            self.add_output("")
+            return True
+        
+        elif "rm -rf" in cmd_lower or "rm -fr" in cmd_lower:
+            self.add_output("ERROR: Cannot delete bullets. They multiply too fast!")
+            self.add_output("")
+            self.secret_commands_found.add("destructive")
+            return True
+        
+        elif cmd_lower == "konami":
+            self.add_output("↑ ↑ ↓ ↓ ← → ← → B A")
+            self.add_output("Classic! But this isn't that kind of game...")
+            self.add_output("")
+            self.secret_commands_found.add("konami")
+            return True
+        
+        elif cmd_lower in ["hack", "hack the planet"]:
+            self.add_output("HACK THE PLANET!")
+            self.add_output("Access granted... to more bullets.")
+            self.add_output("")
+            self.secret_commands_found.add("hacker")
+            return True
+        
+        elif cmd_lower == "matrix":
+            self.add_output("There is no spoon. Only bullets.")
+            self.add_output("")
+            self.secret_commands_found.add("matrix")
+            return True
+        
+        elif cmd_lower == "ping":
+            self.add_output("PONG! The bullets hit back.")
+            self.add_output("")
+            return True
+        
+        elif cmd_lower == "secret":
+            if len(self.secret_commands_found) > 0:
+                self.add_output(f"You've found {len(self.secret_commands_found)} secret command(s)!")
+                self.add_output(f"Discovered: {', '.join(sorted(self.secret_commands_found))}")
+            else:
+                self.add_output("No secrets found yet. Keep exploring!")
+            self.add_output("")
+            return True
+        
+        # Command not recognized as an easter egg
+        return False
     
     def execute_command(self, command):
         """
@@ -136,7 +209,7 @@ class MainMenuState(BaseState):
         self.command_history.append(command)
         
         # Show command in output
-        self.add_output(f"{self.prompt}{command}")
+        self.add_output(f"{self.get_prompt()}{command}")
         
         # Parse and execute
         cmd_lower = command.lower()
@@ -166,70 +239,58 @@ class MainMenuState(BaseState):
         elif cmd_lower in ["clear", "cls"]:
             self.output_lines = []
         
-        # Easter eggs!
-        elif cmd_lower in ["hello", "hi"]:
-            self.add_output("Hello, human. Ready to dodge some bullets?")
-            self.add_output("")
-        
-        elif cmd_lower == "whoami":
-            self.add_output("You are a brave pilot in a world of bullets.")
-            self.add_output("")
-        
-        elif cmd_lower in ["sudo", "sudo su"]:
-            self.add_output("Nice try. You already have all the permissions here.")
-            self.add_output("")
-        
-        elif "rm -rf" in cmd_lower or "rm -fr" in cmd_lower:
-            self.add_output("ERROR: Cannot delete bullets. They multiply too fast!")
-            self.add_output("")
-            self.secret_commands_found.add("destructive")
-        
-        elif cmd_lower == "konami":
-            self.add_output("↑ ↑ ↓ ↓ ← → ← → B A")
-            self.add_output("Classic! But this isn't that kind of game...")
-            self.add_output("")
-            self.secret_commands_found.add("konami")
-        
-        elif cmd_lower in ["hack", "hack the planet"]:
-            self.add_output("HACK THE PLANET!")
-            self.add_output("Access granted... to more bullets.")
-            self.add_output("")
-            self.secret_commands_found.add("hacker")
-        
-        elif cmd_lower == "matrix":
-            self.add_output("There is no spoon. Only bullets.")
-            self.add_output("")
-            self.secret_commands_found.add("matrix")
-        
         elif cmd_lower in ["ls", "dir"]:
-            self.add_output("bullets.dat  more_bullets.dat  even_more_bullets.dat")
-            self.add_output("")
-        
-        elif cmd_lower == "cat bullets.dat":
-            self.add_output("░▒▓█ BULLET DATA █▓▒░")
-            self.add_output("◉ ◎ ● ○ ◐ ◑ ◒ ◓ ◔ ◕")
+            # List directory contents
+            contents = self.filesystem.list_directory()
+            if contents:
+                # Format in columns for better display
+                self.add_output("  ".join(contents))
+            else:
+                self.add_output("(empty directory)")
             self.add_output("")
         
         elif cmd_lower == "pwd":
-            self.add_output("/home/pilot/blthll/certain_death")
+            # Print working directory
+            self.add_output(self.filesystem.get_pwd())
             self.add_output("")
         
-        elif cmd_lower == "ping":
-            self.add_output("PONG! The bullets hit back.")
-            self.add_output("")
+        elif cmd_lower.startswith("cd "):
+            # Change directory
+            path = command[3:].strip()
+            success, error = self.filesystem.change_directory(path)
+            if not success:
+                self.add_output(error)
+                self.add_output("")
         
-        elif cmd_lower == "secret":
-            if len(self.secret_commands_found) > 0:
-                self.add_output(f"You've found {len(self.secret_commands_found)} secret command(s)!")
-                self.add_output(f"Discovered: {', '.join(sorted(self.secret_commands_found))}")
+        elif cmd_lower.startswith("cat "):
+            # Read file
+            filename = command[4:].strip()
+            success, content = self.filesystem.read_file(filename)
+            if success:
+                for line in content:
+                    self.add_output(line)
+                self.add_output("")
             else:
-                self.add_output("No secrets found yet. Keep exploring!")
-            self.add_output("")
+                self.add_output(content)
+                self.add_output("")
+        
+        elif self._easter_egg_commands(cmd_lower=cmd_lower):
+            return
         
         else:
             self.add_output(f"Command not found: {command}")
             self.add_output("Type 'help' for available commands")
             self.add_output("")
+    
+    def get_prompt(self):
+        """Get the current prompt string with directory"""
+        # Get just the last part of the path for brevity
+        path_parts = self.filesystem.current_path
+        if path_parts:
+            current_dir = path_parts[-1]
+        else:
+            current_dir = "~"
+        return f"[{current_dir}]> "
     
     def add_output(self, text):
         """Add a line to the output buffer"""
@@ -258,11 +319,12 @@ class MainMenuState(BaseState):
         input_y = self.renderer.char_height - 1
         
         # Draw border line
-        self.renderer.write(0, input_y - 1, "─" * self.renderer.char_width, 
-                          self.renderer.COLORS['frame_highlight'])
+        self.renderer.write(0, input_y - 1, "-" * self.renderer.char_width, 
+                          self.renderer.COLORS['menu_normal'])
         
         # Draw prompt and input
-        input_text = self.prompt + self.input_buffer
+        prompt = self.get_prompt()
+        input_text = prompt + self.input_buffer
         self.renderer.write(0, input_y, input_text, self.renderer.COLORS['menu_selected'])
         
         # Draw cursor

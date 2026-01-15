@@ -90,14 +90,23 @@ The game window features:
 - Animated boot sequence
 - Interactive command prompt with blinking cursor
 
-## 🥚 Easter Eggs
+## 🥚 Easter Eggs & Hidden Content
 
-There are hidden commands and responses throughout the terminal! Try typing various things and see what happens. Some suggestions to get you started:
-- Try common terminal commands
-- Reference pop culture
+There are hidden commands and responses throughout the terminal! The game includes a **fully navigable virtual filesystem** with secrets hidden in different directories.
+
+**Explore the filesystem:**
+- Use `ls` to see what's in your current directory
+- Use `cd <directory>` to navigate (e.g., `cd data`, `cd weapons`)
+- Use `cd ..` to go back to the parent directory
+- Use `pwd` to see where you are
+- Use `cat <filename>` to read files
+
+**Other easter eggs to try:**
+- Common terminal commands
+- Pop culture references
 - Be creative!
 
-Type `secret` to check how many you've found.
+Type `secret` to check how many easter eggs you've found. The prompt shows your current directory - explore and find hidden files!
 
 ## Development Roadmap
 

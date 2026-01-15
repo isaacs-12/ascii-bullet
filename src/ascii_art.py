@@ -40,12 +40,21 @@ def get_help_text():
     """Get help command output"""
     return [
         "Available commands:",
-        "  start    - Begin a new game",
-        "  continue - Load saved game",
-        "  quit     - Exit game",
-        "  help     - Show this help",
-        "  about    - About this game",
-        "  clear    - Clear the terminal",
+        "  start       - Begin a new game",
+        "  continue    - Load saved game",
+        "  quit        - Exit game",
+        "  help        - Show this help",
+        "  about       - About this game",
+        "  clear       - Clear the terminal",
+        "",
+        "Filesystem commands:",
+        "  ls / dir    - List directory contents",
+        "  cd <path>   - Change directory",
+        "  cd ..       - Go to parent directory",
+        "  pwd         - Print working directory",
+        "  cat <file>  - Display file contents",
+        "",
+        "Hint: Explore the filesystem for secrets!",
         "",
     ]
 

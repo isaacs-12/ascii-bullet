@@ -13,8 +13,7 @@ class TerminalRenderer:
     COLORS = {
         'bg': (10, 10, 15),           # Dark background
         'fg': (0, 255, 0),            # Bright green text
-        'frame': (40, 40, 50),        # Frame color
-        'frame_highlight': (60, 60, 80),  # Frame highlight
+        'title_bar': (15, 15, 20),    # Title bar background
         'menu_selected': (0, 255, 0),  # Selected menu item
         'menu_normal': (120, 255, 120), # Normal menu item
         'title': (100, 255, 100),     # Title text
@@ -52,8 +51,8 @@ class TerminalRenderer:
         self.cell_height = self.char_pixel_height
         
         # Frame settings
-        self.frame_thickness = 20
-        self.title_bar_height = 30
+        self.frame_thickness = 0  # No border frame
+        self.title_bar_height = 28
         
         # Calculate initial window size
         self.char_width = width
@@ -152,12 +151,12 @@ class TerminalRenderer:
             color = self.COLORS['fg']
         
         # Corners and edges
-        self.write(x, y, '┌' + '─' * (width - 2) + '┐', color)
-        self.write(x, y + height - 1, '└' + '─' * (width - 2) + '┘', color)
+        self.write(x, y, '+' + '-' * (width - 2) + '+', color)
+        self.write(x, y + height - 1, '+' + '-' * (width - 2) + '+', color)
         
         for row in range(y + 1, y + height - 1):
-            self.write(x, row, '│', color)
-            self.write(x + width - 1, row, '│', color)
+            self.write(x, row, '|', color)
+            self.write(x + width - 1, row, '|', color)
     
     def render(self):
         """Render the terminal to the screen"""
@@ -185,12 +184,12 @@ class TerminalRenderer:
             self.window_height = actual_height
             self._resize_buffer(current_char_width, current_char_height)
         
-        # Fill background
-        self.screen.fill(self.COLORS['frame'])
+        # Fill background with terminal color
+        self.screen.fill(self.COLORS['bg'])
         
         # Draw title bar
         title_bar_rect = pygame.Rect(0, 0, actual_width, self.title_bar_height)
-        pygame.draw.rect(self.screen, self.COLORS['frame_highlight'], title_bar_rect)
+        pygame.draw.rect(self.screen, self.COLORS['title_bar'], title_bar_rect)
         
         title_surface = self.title_font.render("● ASCII BULLET HELL", True, self.COLORS['menu_normal'])
         self.screen.blit(title_surface, (10, 7))
@@ -218,16 +217,7 @@ class TerminalRenderer:
                                 y = row * self.cell_height
                                 terminal_surface.blit(char_surface, (x, y))
         
-        # Draw shadow
-        shadow_rect = pygame.Rect(
-            self.frame_thickness + 2,
-            self.title_bar_height + self.frame_thickness + 2,
-            current_terminal_width + 4,
-            current_terminal_height + 4
-        )
-        pygame.draw.rect(self.screen, (0, 0, 0), shadow_rect)
-        
-        # Blit the terminal surface to the screen at exact position
+        # Blit the terminal surface to the screen
         terminal_pos = (self.frame_thickness, self.title_bar_height + self.frame_thickness)
         self.screen.blit(terminal_surface, terminal_pos)
         

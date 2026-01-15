@@ -197,7 +197,8 @@ class MainMenuState(BaseState):
             self.add_output("")
             return True
         
-        elif "rm -rf" in cmd_lower or "rm -fr" in cmd_lower:
+        elif ("rm -rf" in cmd_lower or "rm -fr" in cmd_lower) and "save" not in cmd_lower:
+            # Easter egg for destructive rm commands (except for save reset)
             self.add_output("ERROR: Cannot delete bullets. They multiply too fast!")
             self.add_output("")
             self._mark_secret_found("destructive")
@@ -226,18 +227,6 @@ class MainMenuState(BaseState):
         elif cmd_lower == "ping":
             self.add_output("PONG! The bullets hit back.")
             self.add_output("")
-            return True
-        
-        elif cmd_lower in ["rm save", "rm save.json", "rm -rf save"]:
-            self.add_output("Deleting save file...")
-            self.add_output("")
-            self.game.save_system.reset_save()
-            # Reset local secrets and filesystem
-            self.secret_commands_found = set()
-            self.filesystem.reset_to_defaults()
-            self.add_output("Save data and filesystem reset! Starting fresh.")
-            self.add_output("")
-            self._mark_secret_found("fresh_start")
             return True
         
         elif cmd_lower == "secret":
@@ -401,6 +390,18 @@ class MainMenuState(BaseState):
                 self.add_output(error)
             self.add_output("")
         
+        elif cmd_lower in ["rm save", "rm save.json", "rm -rf save", "rm -fr save"]:
+            # Special command to reset save data
+            self.add_output("Deleting save file...")
+            self.add_output("")
+            self.game.save_system.reset_save()
+            # Reset local secrets and filesystem
+            self.secret_commands_found = set()
+            self.filesystem.reset_to_defaults()
+            self.add_output("Save data and filesystem reset! Starting fresh.")
+            self.add_output("")
+            self._mark_secret_found("fresh_start")
+        
         elif cmd_lower.startswith("rm ") and not cmd_lower.startswith("rm -"):
             # Delete file
             filename = command[3:].strip()
@@ -510,16 +511,16 @@ class MainMenuState(BaseState):
     
     def _get_directory_completions(self, partial):
         """Get directory name completions"""
-        current_dir = self.filesystem.get_current_directory()
+        # Get all contents (includes user-created)
+        all_contents = self.filesystem.list_directory()
         
-        if 'dirs' not in current_dir:
-            return []
-        
-        # Get all directories that start with the partial string
+        # Filter for directories (end with /)
         matches = []
-        for dir_name in current_dir['dirs'].keys():
-            if dir_name.startswith(partial):
-                matches.append(dir_name)
+        for item in all_contents:
+            if item.endswith('/'):
+                dir_name = item[:-1]  # Remove trailing slash
+                if dir_name.startswith(partial):
+                    matches.append(dir_name)
         
         # Also include .. if it starts with partial
         if "..".startswith(partial) and len(self.filesystem.current_path) > 1:
@@ -529,16 +530,15 @@ class MainMenuState(BaseState):
     
     def _get_file_completions(self, partial):
         """Get file name completions"""
-        current_dir = self.filesystem.get_current_directory()
+        # Get all contents (includes user-created)
+        all_contents = self.filesystem.list_directory()
         
-        if 'files' not in current_dir:
-            return []
-        
-        # Get all files that start with the partial string
+        # Filter for files (don't end with /)
         matches = []
-        for file_name in current_dir['files'].keys():
-            if file_name.startswith(partial):
-                matches.append(file_name)
+        for item in all_contents:
+            if not item.endswith('/'):
+                if item.startswith(partial):
+                    matches.append(item)
         
         return sorted(matches)
     

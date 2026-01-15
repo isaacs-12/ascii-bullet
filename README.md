@@ -111,24 +111,50 @@ The game **automatically saves** your progress:
 
 Save file location: `~/.ascii-bullet/save.json`
 
+## 🗂️ Dynamic Filesystem
+
+The game features a **fully mutable filesystem** that you can modify and use for puzzles!
+
+**Read-only commands:**
+- `ls` / `dir` - List directory contents
+- `cd <dir>` - Change directory
+- `pwd` - Print current directory
+- `cat <file>` - Read file contents
+
+**File operations:**
+- `touch <file>` - Create empty file
+- `echo text > file` - Write to file (overwrites)
+- `echo text >> file` - Append to file
+- `rm <file>` - Delete user-created files
+
+**Directory operations:**
+- `mkdir <dir>` - Create directory
+- `rmdir <dir>` - Delete empty directory
+
+**Features:**
+- **16KB limit** for user-created content
+- **Persistent** - saved to `save.json`
+- **Reset with** `rm save` - restores default filesystem
+- **Tab completion** for `cd` and `cat`
+- **Files stored as text** - ready for future "executable" support
+
 ## 🥚 Easter Eggs & Hidden Content
 
-There are hidden commands and responses throughout the terminal! The game includes a **fully navigable virtual filesystem** with secrets hidden in different directories.
-
-**Explore the filesystem:**
-- Use `ls` to see what's in your current directory
-- Use `cd <directory>` to navigate (e.g., `cd data`, `cd weapons`)
-- Use `cd ..` to go back to the parent directory
-- Use `pwd` to see where you are
-- Use `cat <filename>` to read files
-- **Press TAB** after typing `cd` or `cat` for auto-completion!
+There are hidden commands and responses throughout the terminal! The game includes a default filesystem with secrets, and you can create your own files and puzzles!
 
 **Other easter eggs to try:**
 - Common terminal commands
 - Pop culture references
 - Be creative!
 
-Type `secret` to check how many easter eggs you've found. The prompt shows your current directory - explore and find hidden files!
+Type `secret` to check how many easter eggs you've found.
+
+**Puzzle Possibilities:**
+- Create files with passwords or clues
+- Build directory structures that unlock features
+- Hide information across multiple files
+- Design scavenger hunts through the filesystem
+- Future: Create "executable" Python scripts stored as files!
 
 ## 🎮 Gameplay
 

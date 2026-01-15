@@ -2,18 +2,40 @@
 Simulated filesystem for terminal easter eggs
 """
 
+import json
+
 
 class VirtualFileSystem:
     """A virtual filesystem with directories and files"""
     
-    def __init__(self):
-        """Initialize the filesystem structure"""
+    # Maximum total size for user-created files (16KB)
+    MAX_USER_FILES_SIZE = 16 * 1024
+    
+    def __init__(self, saved_state=None):
+        """
+        Initialize the filesystem structure
+        
+        Args:
+            saved_state: Optional saved filesystem state to restore
+        """
         # Current directory path as a list (e.g., ['home', 'pilot', 'blthll'])
         self.current_path = ['home', 'pilot', 'blthll']
         
-        # Filesystem structure: directories contain 'dirs' and 'files'
-        # Files map to their content (string or list of strings)
-        self.filesystem = {
+        # Load default filesystem
+        self.filesystem = self._get_default_filesystem()
+        
+        # Track user modifications separately
+        self.user_created_files = {}  # path -> content
+        self.user_created_dirs = []   # list of paths
+        self.user_modified_files = {}  # path -> content
+        
+        # Restore saved state if provided
+        if saved_state:
+            self._restore_state(saved_state)
+    
+    def _get_default_filesystem(self):
+        """Get the default read-only filesystem structure"""
+        return {
             'home': {
                 'dirs': {
                     'pilot': {
@@ -248,5 +270,273 @@ class VirtualFileSystem:
     def file_exists(self, filename):
         """Check if a file exists in the current directory"""
         current_dir = self.get_current_directory()
-        return 'files' in current_dir and filename in current_dir['files']
+        if 'files' in current_dir and filename in current_dir['files']:
+            return True
+        
+        # Check user-created files
+        full_path = self.get_pwd() + '/' + filename
+        return full_path in self.user_created_files or full_path in self.user_modified_files
+    
+    # === Mutable Filesystem Operations ===
+    
+    def _get_user_files_size(self):
+        """Calculate total size of user-created content"""
+        total = 0
+        for content in self.user_created_files.values():
+            if isinstance(content, list):
+                total += sum(len(line) for line in content)
+            else:
+                total += len(content)
+        for content in self.user_modified_files.values():
+            if isinstance(content, list):
+                total += sum(len(line) for line in content)
+            else:
+                total += len(content)
+        return total
+    
+    def create_file(self, filename, content=""):
+        """
+        Create a new file in current directory
+        
+        Args:
+            filename: Name of file to create
+            content: Initial content (string or list of strings)
+            
+        Returns:
+            tuple: (success, error_message or None)
+        """
+        if self.file_exists(filename):
+            return (False, f"File '{filename}' already exists")
+        
+        # Check size limit
+        content_size = len(content) if isinstance(content, str) else sum(len(line) for line in content)
+        if self._get_user_files_size() + content_size > self.MAX_USER_FILES_SIZE:
+            return (False, "File size limit exceeded (16KB max for user files)")
+        
+        full_path = self.get_pwd() + '/' + filename
+        self.user_created_files[full_path] = content if content else []
+        return (True, None)
+    
+    def write_file(self, filename, content, append=False):
+        """
+        Write content to a file (overwrites or appends)
+        
+        Args:
+            filename: Name of file
+            content: Content to write (string)
+            append: If True, append instead of overwrite
+            
+        Returns:
+            tuple: (success, error_message or None)
+        """
+        full_path = self.get_pwd() + '/' + filename
+        
+        # Get existing content
+        existing = None
+        if full_path in self.user_created_files:
+            existing = self.user_created_files[full_path]
+        elif full_path in self.user_modified_files:
+            existing = self.user_modified_files[full_path]
+        elif self.file_exists(filename):
+            # Modifying a default file
+            success, file_content = self.read_file(filename)
+            if success:
+                existing = file_content
+        
+        # Build new content
+        if append and existing:
+            if isinstance(existing, list):
+                new_content = existing + [content]
+            else:
+                new_content = existing + '\n' + content
+        else:
+            new_content = [content] if not isinstance(content, list) else content
+        
+        # Check size
+        new_size = sum(len(line) for line in new_content) if isinstance(new_content, list) else len(new_content)
+        if self._get_user_files_size() + new_size > self.MAX_USER_FILES_SIZE:
+            return (False, "File size limit exceeded (16KB max for user files)")
+        
+        # Write to appropriate location
+        if full_path in self.user_created_files:
+            self.user_created_files[full_path] = new_content
+        else:
+            self.user_modified_files[full_path] = new_content
+        
+        return (True, None)
+    
+    def delete_file(self, filename):
+        """
+        Delete a file from current directory
+        
+        Args:
+            filename: Name of file to delete
+            
+        Returns:
+            tuple: (success, error_message or None)
+        """
+        full_path = self.get_pwd() + '/' + filename
+        
+        # Can only delete user-created files
+        if full_path in self.user_created_files:
+            del self.user_created_files[full_path]
+            return (True, None)
+        elif full_path in self.user_modified_files:
+            del self.user_modified_files[full_path]
+            return (True, None)
+        elif self.file_exists(filename):
+            return (False, "Cannot delete default system files")
+        else:
+            return (False, f"File '{filename}' not found")
+    
+    def create_directory(self, dirname):
+        """
+        Create a new directory in current location
+        
+        Args:
+            dirname: Name of directory to create
+            
+        Returns:
+            tuple: (success, error_message or None)
+        """
+        current_dir = self.get_current_directory()
+        if 'dirs' in current_dir and dirname in current_dir['dirs']:
+            return (False, f"Directory '{dirname}' already exists")
+        
+        full_path = self.get_pwd() + '/' + dirname
+        if full_path in self.user_created_dirs:
+            return (False, f"Directory '{dirname}' already exists")
+        
+        self.user_created_dirs.append(full_path)
+        return (True, None)
+    
+    def delete_directory(self, dirname):
+        """
+        Delete an empty user-created directory
+        
+        Args:
+            dirname: Name of directory to delete
+            
+        Returns:
+            tuple: (success, error_message or None)
+        """
+        full_path = self.get_pwd() + '/' + dirname
+        
+        if full_path not in self.user_created_dirs:
+            return (False, f"Cannot delete: not a user-created directory")
+        
+        # Check if empty
+        for file_path in self.user_created_files:
+            if file_path.startswith(full_path + '/'):
+                return (False, f"Directory not empty")
+        
+        self.user_created_dirs.remove(full_path)
+        return (True, None)
+    
+    def list_directory(self):
+        """List contents of current directory (including user-created)"""
+        current_dir = self.get_current_directory()
+        contents = []
+        current_path = self.get_pwd()
+        
+        # Add default directories
+        if 'dirs' in current_dir:
+            for dir_name in sorted(current_dir['dirs'].keys()):
+                contents.append(f"{dir_name}/")
+        
+        # Add user-created directories
+        for dir_path in sorted(self.user_created_dirs):
+            # Check if it's a direct child of current directory
+            if '/' in dir_path:
+                parent = dir_path.rsplit('/', 1)[0]
+                if parent == current_path:
+                    dir_name = dir_path.rsplit('/', 1)[1]
+                    if f"{dir_name}/" not in contents:
+                        contents.append(f"{dir_name}/")
+        
+        # Add default files
+        if 'files' in current_dir:
+            for file_name in sorted(current_dir['files'].keys()):
+                contents.append(file_name)
+        
+        # Add user-created files in this directory
+        for file_path in sorted(self.user_created_files.keys()):
+            if '/' in file_path:
+                parent = file_path.rsplit('/', 1)[0]
+                if parent == current_path:
+                    file_name = file_path.rsplit('/', 1)[1]
+                    if file_name not in contents:
+                        contents.append(file_name)
+        
+        # Add user-modified files
+        for file_path in sorted(self.user_modified_files.keys()):
+            if '/' in file_path:
+                parent = file_path.rsplit('/', 1)[0]
+                if parent == current_path:
+                    file_name = file_path.rsplit('/', 1)[1]
+                    if file_name not in contents:
+                        contents.append(file_name)
+        
+        return contents
+    
+    def read_file(self, filename):
+        """Read a file (checks user files first, then defaults)"""
+        full_path = self.get_pwd() + '/' + filename
+        
+        # Check user-modified files first
+        if full_path in self.user_modified_files:
+            content = self.user_modified_files[full_path]
+            if isinstance(content, list):
+                return (True, content)
+            else:
+                return (True, [content])
+        
+        # Check user-created files
+        if full_path in self.user_created_files:
+            content = self.user_created_files[full_path]
+            if isinstance(content, list):
+                return (True, content)
+            else:
+                return (True, [content])
+        
+        # Fall back to default files
+        current_dir = self.get_current_directory()
+        
+        if 'files' in current_dir and filename in current_dir['files']:
+            content = current_dir['files'][filename]
+            if isinstance(content, list):
+                return (True, content)
+            else:
+                return (True, [content])
+        else:
+            return (False, f"cat: {filename}: No such file")
+    
+    # === Save/Load State ===
+    
+    def get_state(self):
+        """Get filesystem state for saving"""
+        return {
+            'current_path': self.current_path,
+            'user_created_files': self.user_created_files,
+            'user_created_dirs': self.user_created_dirs,
+            'user_modified_files': self.user_modified_files
+        }
+    
+    def _restore_state(self, state):
+        """Restore filesystem state from save"""
+        if 'current_path' in state:
+            self.current_path = state['current_path']
+        if 'user_created_files' in state:
+            self.user_created_files = state['user_created_files']
+        if 'user_created_dirs' in state:
+            self.user_created_dirs = state['user_created_dirs']
+        if 'user_modified_files' in state:
+            self.user_modified_files = state['user_modified_files']
+    
+    def reset_to_defaults(self):
+        """Reset filesystem to default state"""
+        self.current_path = ['home', 'pilot', 'blthll']
+        self.user_created_files = {}
+        self.user_created_dirs = []
+        self.user_modified_files = {}
 

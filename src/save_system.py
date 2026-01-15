@@ -67,7 +67,10 @@ class SaveSystem:
                 "terminal_width": 80,
                 "terminal_height": 50,
                 "font_size": 12,
-            }
+            },
+            
+            # Filesystem state
+            "filesystem": None  # Will store user modifications
         }
     
     def save(self):
@@ -197,6 +200,16 @@ class SaveSystem:
     def get_save_location(self):
         """Get the save file path as a string"""
         return str(self.save_file)
+    
+    # Filesystem State
+    def save_filesystem(self, filesystem_state):
+        """Save filesystem state"""
+        self.data["filesystem"] = filesystem_state
+        self.save()
+    
+    def get_filesystem_state(self):
+        """Get saved filesystem state"""
+        return self.data.get("filesystem", None)
     
     def reset_save(self):
         """Reset all save data (destructive!)"""

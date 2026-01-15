@@ -37,8 +37,9 @@ class MainMenuState(BaseState):
         saved_secrets = game.save_system.get_secrets_found()
         self.secret_commands_found = set(saved_secrets)
         
-        # Virtual filesystem
-        self.filesystem = VirtualFileSystem()
+        # Virtual filesystem (load saved state)
+        saved_fs_state = game.save_system.get_filesystem_state()
+        self.filesystem = VirtualFileSystem(saved_state=saved_fs_state)
         
         # Konami code tracking
         self.konami_sequence = []
@@ -231,9 +232,10 @@ class MainMenuState(BaseState):
             self.add_output("Deleting save file...")
             self.add_output("")
             self.game.save_system.reset_save()
-            # Reset local secrets too
+            # Reset local secrets and filesystem
             self.secret_commands_found = set()
-            self.add_output("Save data reset! Starting fresh.")
+            self.filesystem.reset_to_defaults()
+            self.add_output("Save data and filesystem reset! Starting fresh.")
             self.add_output("")
             self._mark_secret_found("fresh_start")
             return True
@@ -377,6 +379,85 @@ class MainMenuState(BaseState):
                 self.add_output(content)
                 self.add_output("")
         
+        elif cmd_lower.startswith("touch "):
+            # Create empty file
+            filename = command[6:].strip()
+            success, error = self.filesystem.create_file(filename)
+            if success:
+                self.add_output(f"Created file: {filename}")
+                self._save_filesystem()
+            else:
+                self.add_output(error)
+            self.add_output("")
+        
+        elif cmd_lower.startswith("mkdir "):
+            # Create directory
+            dirname = command[6:].strip()
+            success, error = self.filesystem.create_directory(dirname)
+            if success:
+                self.add_output(f"Created directory: {dirname}/")
+                self._save_filesystem()
+            else:
+                self.add_output(error)
+            self.add_output("")
+        
+        elif cmd_lower.startswith("rm ") and not cmd_lower.startswith("rm -"):
+            # Delete file
+            filename = command[3:].strip()
+            success, error = self.filesystem.delete_file(filename)
+            if success:
+                self.add_output(f"Deleted: {filename}")
+                self._save_filesystem()
+            else:
+                self.add_output(error)
+            self.add_output("")
+        
+        elif cmd_lower.startswith("rmdir "):
+            # Delete directory
+            dirname = command[6:].strip()
+            success, error = self.filesystem.delete_directory(dirname)
+            if success:
+                self.add_output(f"Deleted directory: {dirname}/")
+                self._save_filesystem()
+            else:
+                self.add_output(error)
+            self.add_output("")
+        
+        elif " > " in command or " >> " in command:
+            # Write to file (echo or other content)
+            if " >> " in command:
+                parts = command.split(" >> ", 1)
+                append = True
+            else:
+                parts = command.split(" > ", 1)
+                append = False
+            
+            if len(parts) == 2:
+                content_part = parts[0].strip()
+                filename = parts[1].strip()
+                
+                # Extract content (handle echo specially)
+                if content_part.startswith("echo "):
+                    content = content_part[5:].strip().strip('"').strip("'")
+                else:
+                    content = content_part
+                
+                # Create file if it doesn't exist
+                if not self.filesystem.file_exists(filename):
+                    self.filesystem.create_file(filename, "")
+                
+                success, error = self.filesystem.write_file(filename, content, append=append)
+                if success:
+                    action = "Appended to" if append else "Wrote to"
+                    self.add_output(f"{action}: {filename}")
+                    self._save_filesystem()
+                else:
+                    self.add_output(error)
+                self.add_output("")
+            else:
+                self.add_output("Invalid syntax. Use: echo text > file  or  echo text >> file")
+                self.add_output("")
+        
         elif self._easter_egg_commands(cmd_lower=cmd_lower):
             return
         
@@ -506,6 +587,11 @@ class MainMenuState(BaseState):
         """Mark a secret as found and save"""
         self.secret_commands_found.add(secret_id)
         self.game.save_system.add_secret_found(secret_id)
+    
+    def _save_filesystem(self):
+        """Save current filesystem state"""
+        fs_state = self.filesystem.get_state()
+        self.game.save_system.save_filesystem(fs_state)
     
     def get_prompt(self):
         """Get the current prompt string with directory"""

@@ -31,23 +31,34 @@ class TerminalRenderer:
         """
         self.char_width = width
         self.char_height = height
-        self.cell_size = cell_size
+        
+        # Initialize pygame first
+        pygame.init()
+        
+        # Load monospace font and get actual character metrics
+        self.font = pygame.font.Font(pygame.font.match_font('courier', bold=True), cell_size)
+        self.title_font = pygame.font.Font(pygame.font.match_font('courier', bold=True), 16)
+        
+        # Get actual character dimensions from font metrics
+        # Test with a wide character to ensure proper spacing
+        test_char = self.font.render('█', True, (255, 255, 255))
+        self.char_pixel_width = test_char.get_width()
+        self.char_pixel_height = self.font.get_height()
+        
+        # Use actual character width for cell spacing
+        self.cell_width = self.char_pixel_width
+        self.cell_height = self.char_pixel_height
         
         # Calculate window size with frame
         self.frame_thickness = 20
-        self.terminal_width = width * cell_size
-        self.terminal_height = height * cell_size
+        self.terminal_width = width * self.cell_width
+        self.terminal_height = height * self.cell_height
         self.window_width = self.terminal_width + (self.frame_thickness * 2)
         self.window_height = self.terminal_height + (self.frame_thickness * 2) + 30  # Extra for title bar
         
-        # Initialize pygame
-        pygame.init()
+        # Create the display
         self.screen = pygame.display.set_mode((self.window_width, self.window_height))
         pygame.display.set_caption("ASCII BULLET HELL")
-        
-        # Load monospace font
-        self.font = pygame.font.Font(pygame.font.match_font('courier', bold=True), cell_size)
-        self.title_font = pygame.font.Font(pygame.font.match_font('courier', bold=True), 16)
         
         # Create buffer for terminal content
         self.buffer = [[' ' for _ in range(width)] for _ in range(height)]
@@ -134,8 +145,8 @@ class TerminalRenderer:
                 if char != ' ':
                     color = self.color_buffer[row][col]
                     char_surface = self.font.render(char, True, color)
-                    x = self.frame_thickness + (col * self.cell_size)
-                    y = 30 + self.frame_thickness + (row * self.cell_size)
+                    x = self.frame_thickness + (col * self.cell_width)
+                    y = 30 + self.frame_thickness + (row * self.cell_height)
                     self.screen.blit(char_surface, (x, y))
         
         pygame.display.flip()

@@ -3,7 +3,7 @@
 import pygame
 from src.states.base_state import BaseState
 from src.ascii_art import (
-    BLTHLL_COMPACT, get_startup_sequence, get_welcome_text,
+    BLTHLL_ASCII, get_startup_sequence, get_welcome_text,
     get_help_text, get_about_text
 )
 
@@ -114,7 +114,7 @@ class MainMenuState(BaseState):
         self.output_lines = []
         
         # Add ASCII title
-        for line in BLTHLL_COMPACT:
+        for line in BLTHLL_ASCII:
             self.output_lines.append(line)
         self.output_lines.append("")
         

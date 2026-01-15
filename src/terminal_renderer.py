@@ -212,7 +212,11 @@ class TerminalRenderer:
                             char = self.buffer[row][col]
                             if char != ' ':
                                 color = self.color_buffer[row][col]
-                                char_surface = self.font.render(char, True, color)
+                                try:
+                                    char_surface = self.font.render(char, True, color)
+                                except (pygame.error, UnicodeError):
+                                    # Fallback for characters the font can't render (e.g., emoji)
+                                    char_surface = self.font.render('?', True, color)
                                 x = col * self.cell_width
                                 y = row * self.cell_height
                                 terminal_surface.blit(char_surface, (x, y))

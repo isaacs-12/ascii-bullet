@@ -129,8 +129,8 @@ class VirtualFileSystem:
                                         },
                                         'files': {
                                             'bullets.dat': [
-                                                "░▒▓█ BULLET DATA █▓▒░",
-                                                "◉ ◎ ● ○ ◐ ◑ ◒ ◓ ◔ ◕",
+                                                "=== BULLET DATA ===",
+                                                "* . o O @ # + x",
                                                 "",
                                                 "Type: Standard",
                                                 "Speed: Variable",
@@ -149,13 +149,13 @@ class VirtualFileSystem:
                                         'dirs': {},
                                         'files': {
                                             'warning.txt': [
-                                                "⚠️  WARNING ⚠️",
+                                                "!!! WARNING !!!",
                                                 "",
                                                 "You are entering the CERTAIN DEATH zone.",
                                                 "Bullets here are UNAVOIDABLE.",
                                                 "Turn back while you still can!",
                                                 "",
-                                                "...or don't. Your funeral. 💀"
+                                                "...or don't. Your funeral. [RIP]"
                                             ]
                                         }
                                     }

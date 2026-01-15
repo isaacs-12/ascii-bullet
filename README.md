@@ -137,10 +137,13 @@ The game features a **bullet hell** dodging mechanic where you must survive wave
 **Game Features:**
 - **Proximity scoring system** - Rewards risky play by scoring points based on how close you get to bullets
 - **Dynamic camera system** - The viewport follows your player and respects map boundaries
-- **Multiple enemy types** - Three enemy types (X) with different colors and bullet speeds:
-  - Red: Moderate speed, balanced fire rate
-  - Orange: Fast firing, medium bullet speed  
-  - Purple: Slow firing, very fast bullets
+- **Moving enemies** - Enemies patrol the map and bounce off walls
+- **Limited ammo system** - Enemies run out of health after shooting (20/15/10 shots)
+- **Enemy spawning** - New enemies periodically spawn from map edges
+- **Multiple enemy types** - Three enemy types (X) with different colors, speeds, and behaviors:
+  - Red: Balanced (2 cells/s movement, 20 health)
+  - Orange: Fast & aggressive (4 cells/s movement, 15 health)
+  - Purple: Slow snipers (1 cell/s movement, 10 health, fast bullets)
 - **Color-coded bullets** - Bullets inherit their shooter's color for visual clarity
 - **Pseudorandom level generation** - Each playthrough is different but balanced
 - **Configurable levels** - Easy to create new levels with custom parameters

@@ -100,16 +100,39 @@ class Bullet(Entity):
 class Enemy(Entity):
     """Base enemy class"""
     
-    def __init__(self, x, y, char='X', color=(255, 0, 0), bullet_speed=10.0):
+    def __init__(self, x, y, char='X', color=(255, 0, 0), bullet_speed=10.0, movement_speed=2.0):
         super().__init__(x, y, char=char, color=color)
         self.fire_cooldown = 0
         self.fire_rate = 1000  # Milliseconds between shots
         self.bullet_speed = bullet_speed  # Speed of bullets this enemy fires
+        self.movement_speed = movement_speed  # Movement speed in cells per second
+        
+        # Movement direction (random initial direction)
+        import random
+        angle = random.uniform(0, 2 * 3.14159)
+        self.vx = movement_speed * (angle / 3.14159 - 1)  # Simplistic direction
+        self.vy = movement_speed * (1 - abs(self.vx) / movement_speed)
+        
+        # Health/ammo (each shot costs health)
+        self.health = 20  # 20 shots worth of health
     
-    def update(self, dt):
-        """Update enemy state"""
+    def update(self, dt, map_width, map_height):
+        """Update enemy state and movement"""
         if self.fire_cooldown > 0:
             self.fire_cooldown -= dt
+        
+        # Move enemy
+        move_dist = self.movement_speed * (dt / 1000.0)
+        self.x += self.vx * (move_dist / self.movement_speed)
+        self.y += self.vy * (move_dist / self.movement_speed)
+        
+        # Bounce off walls
+        if self.x <= 1 or self.x >= map_width - 1:
+            self.vx = -self.vx
+            self.x = max(1, min(map_width - 1, self.x))
+        if self.y <= 1 or self.y >= map_height - 1:
+            self.vy = -self.vy
+            self.y = max(1, min(map_height - 1, self.y))
     
     def can_fire(self):
         """Check if enemy can fire"""
@@ -117,7 +140,7 @@ class Enemy(Entity):
     
     def fire(self, target_x, target_y):
         """
-        Fire a bullet towards a target
+        Fire a bullet towards a target (costs health)
         
         Args:
             target_x: Target X position
@@ -126,7 +149,7 @@ class Enemy(Entity):
         Returns:
             Bullet instance or None
         """
-        if not self.can_fire():
+        if not self.can_fire() or self.health <= 0:
             return None
         
         # Calculate direction to target
@@ -140,6 +163,13 @@ class Enemy(Entity):
             vy = (dy / dist) * self.bullet_speed
             
             self.fire_cooldown = self.fire_rate
+            # Shooting costs health
+            self.health -= 1
+            
+            # Enemy dies if out of health
+            if self.health <= 0:
+                self.alive = False
+            
             # Bullet inherits enemy's color
             return Bullet(self.x, self.y, vx, vy, color=self.color)
         

@@ -23,6 +23,8 @@ my_level = LevelConfig(
 my_level.min_enemies = 5
 my_level.max_enemies = 10
 my_level.enemy_types = ['basic', 'fast', 'sniper']
+my_level.spawn_interval = 5000  # ms between new enemy spawns
+my_level.max_active_enemies = 15  # Maximum enemies on screen
 
 # Difficulty multipliers
 my_level.enemy_fire_rate_multiplier = 1.2  # Higher = faster firing
@@ -65,6 +67,8 @@ All enemies use the character `X` but are differentiated by color and behavior.
 - Color: Red (255, 100, 100)
 - Fire Rate: 2 seconds
 - Bullet Speed: 12 cells/second
+- Movement Speed: 2 cells/second
+- Health: 20 shots
 - Good for: Balanced difficulty
 
 ### Fast Enemy ('fast')
@@ -72,16 +76,24 @@ All enemies use the character `X` but are differentiated by color and behavior.
 - Color: Orange (255, 150, 0)
 - Fire Rate: 1 second
 - Bullet Speed: 10 cells/second
-- Good for: High pressure, many bullets
+- Movement Speed: 4 cells/second
+- Health: 15 shots
+- Good for: High pressure, many bullets, hard to predict
 
 ### Sniper Enemy ('sniper')
 - Character: `X`
 - Color: Purple (255, 0, 255)
 - Fire Rate: 3 seconds
 - Bullet Speed: 18 cells/second
-- Good for: Fast-moving threats
+- Movement Speed: 1 cell/second
+- Health: 10 shots
+- Good for: Dangerous but finite threat
 
-**Note:** Bullets inherit their enemy's color for visual clarity.
+**Note:** 
+- Bullets inherit their enemy's color for visual clarity
+- Enemies move around and bounce off walls
+- Each shot costs 1 health - enemies disappear when exhausted
+- New enemies spawn periodically from map edges
 
 ## Configuration Parameters
 
@@ -91,8 +103,10 @@ All enemies use the character `X` but are differentiated by color and behavior.
 - Larger maps = more room to dodge
 
 ### Enemy Count
-- `min_enemies`: Minimum spawned enemies
-- `max_enemies`: Maximum spawned enemies
+- `min_enemies`: Initial enemies at level start
+- `max_enemies`: Initial enemies at level start
+- `max_active_enemies`: Maximum enemies on screen (includes spawned)
+- `spawn_interval`: Milliseconds between new enemy spawns
 - More enemies = higher difficulty
 
 ### Difficulty Multipliers

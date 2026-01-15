@@ -60,9 +60,10 @@ def get_help_text():
         "  rm <file>      - Delete file",
         "  rm save        - Delete save file and reset local filesystem",
         "  rmdir <dir>    - Delete empty directory",
-        "  mv <src> <dst> - Move or rename file",
-        "  echo text > f  - Write to file (overwrites)",
-        "  echo text >> f - Append to file",
+      "  mv <src> <dst> - Move or rename file",
+      "  echo text > f  - Write to file (overwrites)",
+      "  echo text >> f - Append to file",
+      "  python <file>  - Execute Python script (or 'run')",
         "",
     ]
 

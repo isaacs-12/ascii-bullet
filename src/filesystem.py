@@ -129,6 +129,22 @@ class VirtualFileSystem:
                                         "Step 1: Don't get hit",
                                         "Step 2: See step 1",
                                         "Step 3: There is no step 3"
+                                    ],
+                                    'hello.py': [
+                                        "# Example Python script",
+                                        "# Try running with: python hello.py",
+                                        "",
+                                        "print('Hello from BLTHLL!')",
+                                        "print('You can write Python scripts here!')",
+                                        "",
+                                        "# Access the game API",
+                                        "files = game.list_files()",
+                                        "print(f'Files in {game.get_pwd()}: {len(files)}')",
+                                        "",
+                                        "# Read a file",
+                                        "readme = game.read_file('readme.txt')",
+                                        "if readme:",
+                                        "    print(f'readme.txt has {len(readme)} lines')",
                                     ]
                                 }
                             }

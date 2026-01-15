@@ -81,6 +81,7 @@ ascii-bullet/
 │   ├── terminal_renderer.py # Terminal-style rendering system
 │   ├── ascii_art.py         # ASCII art and text content
 │   ├── filesystem.py        # Virtual filesystem for easter eggs
+│   ├── script_executor.py   # Safe Python script execution
 │   ├── entities.py          # Player, enemies, bullets
 │   ├── camera.py            # Camera/viewport system
 │   ├── level.py             # Level configuration and generation
@@ -113,7 +114,7 @@ Save file location: `~/.ascii-bullet/save.json`
 
 ## 🗂️ Dynamic Filesystem
 
-The game features a **fully mutable filesystem** that you can modify and use for puzzles!
+The game features a **fully mutable filesystem** that you'll need to navigate and manipulate to solve puzzles!
 
 **Read-only commands:**
 - `ls` / `dir` - List directory contents
@@ -125,36 +126,76 @@ The game features a **fully mutable filesystem** that you can modify and use for
 - `touch <file>` - Create empty file
 - `echo text > file` - Write to file (overwrites)
 - `echo text >> file` - Append to file
-- `rm <file>` - Delete user-created files
+- `rm <file>` - Delete files (including default system files!)
+- `mv <src> <dst>` - Move or rename files
 
 **Directory operations:**
 - `mkdir <dir>` - Create directory
 - `rmdir <dir>` - Delete empty directory
 
+**Script execution:**
+- `python <file.py>` or `run <file.py>` - Execute Python scripts in a sandboxed environment
+
 **Features:**
-- **16KB limit** for user-created content
-- **Persistent** - saved to `save.json`
-- **Reset with** `rm save` - restores default filesystem
+- **Persistent changes** - all modifications saved to `save.json`
+- **Reset with** `rm save` - restores default filesystem if you get stuck
 - **Tab completion** for `cd` and `cat`
-- **Files stored as text** - ready for future "executable" support
+- **Safe Python execution** - Write and run scripts to solve complex puzzles
+- **16KB limit** for additional files (plenty of room for puzzle-solving!)
 
 ## 🥚 Easter Eggs & Hidden Content
 
-There are hidden commands and responses throughout the terminal! The game includes a default filesystem with secrets, and you can create your own files and puzzles!
+There are hidden commands and responses throughout the terminal! The game includes a default filesystem with secrets to discover.
 
-**Other easter eggs to try:**
-- Common terminal commands
-- Pop culture references
-- Be creative!
+**Hints:**
+- Try common terminal commands
+- Look for pop culture references
+- Explore the filesystem thoroughly
+- Some puzzles may require writing code!
 
 Type `secret` to check how many easter eggs you've found.
 
-**Puzzle Possibilities:**
-- Create files with passwords or clues
-- Build directory structures that unlock features
-- Hide information across multiple files
-- Design scavenger hunts through the filesystem
-- Future: Create "executable" Python scripts stored as files!
+**You'll need these skills to solve puzzles:**
+- Navigate and read files to find clues
+- Move, create, and modify files to unlock secrets
+- Write Python scripts to automate complex tasks
+- Combine multiple tools to solve multi-step challenges
+
+## 🐍 Python Scripting
+
+Some puzzles may require writing Python scripts! Scripts run in a **sandboxed environment** with access to a safe game API.
+
+**Example:**
+```bash
+# Try the example script
+cd /home/pilot/blthll
+python hello.py
+
+# Or create your own
+echo print('Hello World!') > test.py
+python test.py
+```
+
+**Available API in scripts:**
+- `game.read_file(filename)` - Read files from the filesystem
+- `game.list_files()` - List files in current directory
+- `game.get_pwd()` - Get current working directory
+- `game.file_exists(filename)` - Check if file exists
+- `print()` - Output to terminal
+- Standard Python: `len()`, `range()`, `str()`, `int()`, `list()`, `dict()`, etc.
+
+**Why you might need scripting:**
+- Parse and analyze multiple files at once
+- Search for patterns across the filesystem
+- Decode or transform text programmatically
+- Automate repetitive tasks
+- Solve computational puzzles
+
+**Safety features:**
+- 5-second execution timeout
+- Sandboxed execution (no real filesystem access)
+- No dangerous imports blocked
+- Only whitelisted Python operations allowed
 
 ## 🎮 Gameplay
 
@@ -205,7 +246,10 @@ The game features a **bullet hell** dodging mechanic where you must survive wave
 - [x] Save/Load system (JSON-based)
 - [x] High scores tracking
 - [x] Statistics tracking
+- [x] Mutable filesystem with file operations
+- [x] Python script execution (sandboxed)
 - [ ] More enemy types and patterns
 - [ ] Multiple levels with progression
 - [ ] Power-ups and abilities
 - [ ] Sound effects and music
+- [ ] Puzzle system using filesystem and scripts

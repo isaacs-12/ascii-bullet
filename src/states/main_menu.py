@@ -439,6 +439,42 @@ class MainMenuState(BaseState):
                 self.add_output("Usage: mv <source> <destination>")
             self.add_output("")
         
+        elif cmd_lower.startswith("python ") or cmd_lower.startswith("run "):
+            # Execute Python script
+            filename = command.split(None, 1)[1].strip() if len(command.split(None, 1)) > 1 else ""
+            if not filename:
+                self.add_output("Usage: python <script.py>  or  run <script.py>")
+                self.add_output("")
+            elif not filename.endswith('.py'):
+                self.add_output("Error: Only .py files can be executed")
+                self.add_output("")
+            else:
+                success, content = self.filesystem.read_file(filename)
+                if not success:
+                    self.add_output(content)  # Error message
+                    self.add_output("")
+                else:
+                    self.add_output(f"Executing {filename}...")
+                    self.add_output("")
+                    
+                    # Import and use script executor
+                    from src.script_executor import ScriptExecutor
+                    executor = ScriptExecutor()
+                    
+                    # Execute with output callback
+                    exec_success, error = executor.execute(
+                        content, 
+                        self.filesystem, 
+                        self.add_output
+                    )
+                    
+                    if not exec_success:
+                        self.add_output("")
+                        self.add_output(f"Execution failed: {error}")
+                    
+                    self.add_output("")
+                    self._mark_secret_found("script_runner")
+        
         elif " > " in command or " >> " in command:
             # Write to file (echo or other content)
             if " >> " in command:

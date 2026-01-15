@@ -21,18 +21,20 @@ class Game:
         # Initialize with main menu
         self.change_state(MainMenuState(self))
     
-    def change_state(self, new_state):
+    def change_state(self, new_state, call_enter=True):
         """
         Change to a new game state
         
         Args:
             new_state: The new state to switch to
+            call_enter: Whether to call enter() on the new state (default True)
         """
         if self.current_state:
             self.current_state.exit()
         
         self.current_state = new_state
-        self.current_state.enter()
+        if call_enter:
+            self.current_state.enter()
     
     def handle_events(self):
         """Handle pygame events"""

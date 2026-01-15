@@ -47,7 +47,7 @@ Or run directly:
 ## Commands
 
 Type these commands in the terminal:
-- **start** / **new** - Begin a new game (coming soon)
+- **start** / **new** - Begin a new game
 - **continue** / **load** - Load saved game (coming soon)
 - **quit** / **exit** - Exit the game
 - **help** - Show available commands
@@ -55,7 +55,7 @@ Type these commands in the terminal:
 - **clear** - Clear the terminal
 - **secret** - Check your easter egg progress
 
-### Controls
+### Terminal Controls
 - **Type** to enter commands
 - **ENTER** - Execute command
 - **BACKSPACE** - Delete characters
@@ -63,20 +63,29 @@ Type these commands in the terminal:
 - **ESC** - Quick exit
 - **Any key** - Skip boot sequence
 
+### Gameplay Controls
+- **WASD** or **Arrow Keys** - Move player
+- **ESC** or **Ctrl+C** - Return to menu
+
 ## Project Structure
 
 ```
 ascii-bullet/
-├── main.py              # Game entry point
-├── run.sh               # Quick start script
-├── requirements.txt     # Python dependencies
+├── main.py                   # Game entry point
+├── run.sh                    # Quick start script
+├── requirements.txt          # Python dependencies
 ├── src/
-│   ├── game.py         # Main game controller
-│   ├── terminal_renderer.py  # Terminal-style rendering system
-│   ├── ascii_art.py    # ASCII art and text content
-│   └── states/         # Game states
+│   ├── game.py              # Main game controller
+│   ├── terminal_renderer.py # Terminal-style rendering system
+│   ├── ascii_art.py         # ASCII art and text content
+│   ├── filesystem.py        # Virtual filesystem for easter eggs
+│   ├── entities.py          # Player, enemies, bullets
+│   ├── camera.py            # Camera/viewport system
+│   ├── level.py             # Level configuration and generation
+│   └── states/              # Game states
 │       ├── base_state.py    # Base state class
-│       └── main_menu.py     # Terminal command interface
+│       ├── main_menu.py     # Terminal command interface
+│       └── gameplay.py      # Active gameplay state
 ```
 
 ## 🎨 Visual Design
@@ -108,6 +117,33 @@ There are hidden commands and responses throughout the terminal! The game includ
 
 Type `secret` to check how many easter eggs you've found. The prompt shows your current directory - explore and find hidden files!
 
+## 🎮 Gameplay
+
+The game features a **bullet hell** dodging mechanic where you must survive waves of enemy fire!
+
+**How to Play:**
+1. Type `start` in the terminal to begin
+2. Use **WASD** or **arrow keys** to move your character (o)
+3. Dodge bullets (.) fired by enemies (X)
+4. **Score points** by getting close to bullets without being hit!
+   - Within 4 tiles: 5 points
+   - Within 3 tiles: 10 points
+   - Within 2 tiles: 25 points
+   - Within 1 tile: 50 points
+5. Survive and rack up the highest score!
+6. Press **ESC** to return to the terminal menu
+
+**Game Features:**
+- **Proximity scoring system** - Rewards risky play by scoring points based on how close you get to bullets
+- **Dynamic camera system** - The viewport follows your player and respects map boundaries
+- **Multiple enemy types** - Three enemy types (X) with different colors and bullet speeds:
+  - Red: Moderate speed, balanced fire rate
+  - Orange: Fast firing, medium bullet speed  
+  - Purple: Slow firing, very fast bullets
+- **Color-coded bullets** - Bullets inherit their shooter's color for visual clarity
+- **Pseudorandom level generation** - Each playthrough is different but balanced
+- **Configurable levels** - Easy to create new levels with custom parameters
+
 ## Development Roadmap
 
 - [x] Project setup with virtual environment
@@ -116,10 +152,15 @@ Type `secret` to check how many easter eggs you've found. The prompt shows your 
 - [x] Boot sequence animation
 - [x] ASCII art title
 - [x] Command parser with easter eggs
-- [x] Quit functionality
+- [x] Virtual filesystem navigation
+- [x] Game state implementation
+- [x] Player character and controls
+- [x] Camera/viewport system
+- [x] Bullet patterns and enemies
+- [x] Level configuration system
+- [ ] More enemy types and patterns
 - [ ] Save/Load system
-- [ ] Game state implementation
-- [ ] Player character and controls
-- [ ] Bullet patterns and enemies
-- [ ] Scoring system
+- [ ] Scoring and high scores
+- [ ] Multiple levels with progression
+- [ ] Power-ups and abilities
 - [ ] Sound effects and music

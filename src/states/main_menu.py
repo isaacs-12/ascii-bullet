@@ -216,8 +216,10 @@ class MainMenuState(BaseState):
         
         if cmd_lower in ["start", "new", "newgame", "new game", "begin"]:
             self.add_output("Starting new game...")
-            self.add_output("(Game state not implemented yet)")
             self.add_output("")
+            # Launch gameplay state, passing this menu state to return to
+            from src.states.gameplay import GameplayState
+            self.game.change_state(GameplayState(self.game, previous_state=self))
         
         elif cmd_lower in ["continue", "load", "resume"]:
             self.add_output("Loading saved game...")

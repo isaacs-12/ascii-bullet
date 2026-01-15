@@ -201,6 +201,10 @@ class MainMenuState(BaseState):
         # Add welcome text
         for line in get_welcome_text():
             self.output_lines.append(line)
+        
+        # Track initial directory visit
+        current_path = self.filesystem.get_pwd()
+        self.game.save_system.mark_directory_visited(current_path)
 
     def _easter_egg_commands(self, cmd_lower, command):
         """
@@ -297,8 +301,9 @@ class MainMenuState(BaseState):
                 "",
                 "Updated 1 tap (blthll/core).",
                 "==> New Formulae",
-                "blthll-extras        power-tools         secret-scanner",
-                "debug-mode           radar-boost         time-warp",
+                "blthll-extras        emacs               radar-boost",
+                "debug-mode           power-tools         secret-scanner",
+                "time-warp",
                 "",
                 "You have packages available to install.",
                 "You can install them with: brew install <formula>",
@@ -325,29 +330,41 @@ class MainMenuState(BaseState):
             
             # Check if this is a recognized package and enable feature
             installed = False
-            if package == "debug-mode":
+            if package == "emacs":
+                self.add_output(f"🍺  {package} 29.4 is installed!")
+                self.add_output("")
+                self.add_output("GNU Emacs text editor installed!")
+                self.add_output("New command available: emacs <file>")
+                self.game.save_system.install_package("emacs")
+                self._mark_secret_found("brew_emacs")
+                installed = True
+            elif package == "debug-mode":
                 self.add_output(f"🍺  {package} 1.0.0 is installed!")
                 self.add_output("")
                 self.add_output("Debug mode has been enabled!")
                 self.add_output("New command available: debug")
+                self.game.save_system.install_package("debug-mode")
                 self._mark_secret_found("brew_debug_mode")
                 installed = True
             elif package == "time-warp":
                 self.add_output(f"🍺  {package} 1.0.0 is installed!")
                 self.add_output("")
                 self.add_output("Time manipulation tools installed!")
+                self.game.save_system.install_package("time-warp")
                 self._mark_secret_found("brew_time_warp")
                 installed = True
             elif package == "power-tools":
                 self.add_output(f"🍺  {package} 1.0.0 is installed!")
                 self.add_output("")
                 self.add_output("Advanced system utilities installed!")
+                self.game.save_system.install_package("power-tools")
                 self._mark_secret_found("brew_power_tools")
                 installed = True
             elif package == "radar-boost":
                 self.add_output(f"🍺  {package} 1.0.0 is installed!")
                 self.add_output("")
                 self.add_output("Proximity radar enhancements installed!")
+                self.game.save_system.install_package("radar-boost")
                 self._mark_secret_found("brew_radar_boost")
                 installed = True
             elif package == "secret-scanner":
@@ -355,12 +372,14 @@ class MainMenuState(BaseState):
                 self.add_output("")
                 self.add_output("Hidden file scanner installed!")
                 self.add_output("Hint: Try scanning for hidden files in the filesystem...")
+                self.game.save_system.install_package("secret-scanner")
                 self._mark_secret_found("brew_secret_scanner")
                 installed = True
             elif package == "blthll-extras":
                 self.add_output(f"🍺  {package} 1.0.0 is installed!")
                 self.add_output("")
                 self.add_output("Extra game features unlocked!")
+                self.game.save_system.install_package("blthll-extras")
                 self._mark_secret_found("brew_blthll_extras")
                 installed = True
             else:
@@ -477,6 +496,9 @@ class MainMenuState(BaseState):
             else:
                 self.add_output("(empty directory)")
             self.add_output("")
+            # Track directory visit
+            current_path = self.filesystem.get_pwd()
+            self.game.save_system.mark_directory_visited(current_path)
         
         elif cmd_lower == "pwd":
             # Print working directory
@@ -493,6 +515,10 @@ class MainMenuState(BaseState):
             if not success:
                 self.add_output(error)
                 self.add_output("")
+            else:
+                # Track directory visit
+                current_path = self.filesystem.get_pwd()
+                self.game.save_system.mark_directory_visited(current_path)
         
         elif cmd_lower.startswith("cat "):
             # Read file
@@ -596,6 +622,28 @@ class MainMenuState(BaseState):
                 except Exception as e:
                     self.add_output(f"Error opening editor: {e}")
                     self.add_output("")
+        
+        elif cmd_lower.startswith("emacs "):
+            # Open emacs editor (requires brew install first)
+            if not self.game.save_system.is_package_installed("emacs"):
+                self.add_output("emacs: command not found")
+                self.add_output("Hint: Try 'brew update' and 'brew install emacs'")
+                self.add_output("")
+            else:
+                parts = command.split(None, 1)
+                if len(parts) < 2:
+                    self.add_output("Usage: emacs <filename>")
+                    self.add_output("")
+                else:
+                    filename = parts[1].strip()
+                    try:
+                        # Switch to editor state (same as vim)
+                        from src.states.editor import EditorState
+                        editor = EditorState(self.game, self.filesystem, filename, self, editor_name="emacs")
+                        self.game.change_state(editor)
+                    except Exception as e:
+                        self.add_output(f"Error opening editor: {e}")
+                        self.add_output("")
         
         elif cmd_lower.startswith("python ") or cmd_lower.startswith("run "):
             # Execute Python script

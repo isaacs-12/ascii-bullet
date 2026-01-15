@@ -9,7 +9,7 @@ from src.states.base_state import BaseState
 class EditorState(BaseState):
     """A basic text editor for the virtual filesystem"""
     
-    def __init__(self, game, filesystem, filename, previous_state):
+    def __init__(self, game, filesystem, filename, previous_state, editor_name="vim"):
         """
         Initialize the editor
         
@@ -18,20 +18,27 @@ class EditorState(BaseState):
             filesystem: VirtualFileSystem instance
             filename: Name of file to edit
             previous_state: State to return to when done
+            editor_name: Name of the editor ("vim" or "emacs")
         """
         super().__init__(game)
         self.filesystem = filesystem
         self.filename = filename
         self.previous_state = previous_state
+        self.editor_name = editor_name
         
         # Editor state
         self.lines = []
         self.current_line = 0
         self.cursor_pos = 0
-        self.mode = "normal"  # "normal", "insert", or "command"
+        # Emacs is always in "edit" mode, vim has modal editing
+        if editor_name == "emacs":
+            self.mode = "edit"
+        else:
+            self.mode = "normal"  # "normal", "insert", or "command"
         self.command_buffer = ""
         self.message = ""
         self.is_modified = False
+        self.ctrl_x_pressed = False  # For emacs C-x prefix
         
         # Load file if it exists
         success, content = filesystem.read_file(filename)
@@ -50,7 +57,10 @@ class EditorState(BaseState):
     
     def enter(self):
         """Called when entering this state"""
-        self.message = f"Editing: {self.filename} | ESC=normal, i=insert, :w=save, :q=quit, :wq=save&quit"
+        if self.editor_name == "emacs":
+            self.message = f"GNU Emacs: {self.filename} | C-x C-s=save, C-x C-c=quit"
+        else:
+            self.message = f"Editing: {self.filename} | ESC=normal, i=insert, :w=save, :q=quit, :wq=save&quit"
     
     def exit(self):
         """Called when exiting this state"""
@@ -60,12 +70,97 @@ class EditorState(BaseState):
         """Handle input events"""
         for event in events:
             if event.type == pygame.KEYDOWN:
-                if self.mode == "normal":
+                if self.editor_name == "emacs":
+                    self._handle_emacs_mode(event)
+                elif self.mode == "normal":
                     self._handle_normal_mode(event)
                 elif self.mode == "insert":
                     self._handle_insert_mode(event)
                 elif self.mode == "command":
                     self._handle_command_mode(event)
+    
+    def _handle_emacs_mode(self, event):
+        """Handle keys in emacs mode (always editing)"""
+        # If we're waiting for the second key in C-x sequence
+        if self.ctrl_x_pressed:
+            self.ctrl_x_pressed = False
+            if event.mod & pygame.KMOD_CTRL:
+                if event.key == pygame.K_s:
+                    # C-x C-s: Save
+                    self._save_file()
+                    return
+                elif event.key == pygame.K_c:
+                    # C-x C-c: Quit
+                    if self.is_modified:
+                        self.message = "Modified buffer! Save with C-x C-s first"
+                    else:
+                        self.game.change_state(self.previous_state, call_enter=False)
+                    return
+            # If it wasn't a recognized C-x combination, cancel and continue processing
+            self.message = f"GNU Emacs: {self.filename} | C-x C-s=save, C-x C-c=quit"
+            # Important: don't return here, let the key be processed normally
+            # But also don't let it trigger C-x again, so just continue to normal key handling
+            # Skip the C-x check below by checking if we just cleared the flag
+        
+        # Check for Ctrl key combinations (but not if we just processed a failed C-x sequence)
+        elif event.mod & pygame.KMOD_CTRL:
+            if event.key == pygame.K_x:
+                # C-x prefix - wait for next key
+                self.ctrl_x_pressed = True
+                self.message = "C-x-"
+                return
+        
+        # Regular editing (same as vim insert mode)
+        if event.key == pygame.K_RETURN:
+            # Insert new line
+            current = self.lines[self.current_line]
+            self.lines[self.current_line] = current[:self.cursor_pos]
+            self.lines.insert(self.current_line + 1, current[self.cursor_pos:])
+            self.current_line += 1
+            self.cursor_pos = 0
+            self.is_modified = True
+        
+        elif event.key == pygame.K_BACKSPACE:
+            # Delete character
+            if self.cursor_pos > 0:
+                line = self.lines[self.current_line]
+                self.lines[self.current_line] = line[:self.cursor_pos-1] + line[self.cursor_pos:]
+                self.cursor_pos -= 1
+                self.is_modified = True
+            elif self.current_line > 0:
+                # Join with previous line
+                prev_line = self.lines[self.current_line - 1]
+                current_line = self.lines[self.current_line]
+                self.lines[self.current_line - 1] = prev_line + current_line
+                del self.lines[self.current_line]
+                self.current_line -= 1
+                self.cursor_pos = len(prev_line)
+                self.is_modified = True
+        
+        elif event.key == pygame.K_UP:
+            if self.current_line > 0:
+                self.current_line -= 1
+                self.cursor_pos = min(self.cursor_pos, len(self.lines[self.current_line]))
+        
+        elif event.key == pygame.K_DOWN:
+            if self.current_line < len(self.lines) - 1:
+                self.current_line += 1
+                self.cursor_pos = min(self.cursor_pos, len(self.lines[self.current_line]))
+        
+        elif event.key == pygame.K_LEFT:
+            if self.cursor_pos > 0:
+                self.cursor_pos -= 1
+        
+        elif event.key == pygame.K_RIGHT:
+            if self.cursor_pos < len(self.lines[self.current_line]):
+                self.cursor_pos += 1
+        
+        elif event.unicode and event.unicode.isprintable():
+            # Insert character
+            line = self.lines[self.current_line]
+            self.lines[self.current_line] = line[:self.cursor_pos] + event.unicode + line[self.cursor_pos:]
+            self.cursor_pos += 1
+            self.is_modified = True
     
     def _handle_normal_mode(self, event):
         """Handle keys in normal mode"""
@@ -276,22 +371,27 @@ class EditorState(BaseState):
             self.renderer.write(5, y, line_text[:self.renderer.char_width - 6], (255, 255, 255))
             
             # Show cursor on current line
-            if is_current and self.mode == "insert":
+            if is_current:
                 cursor_x = 5 + min(self.cursor_pos, len(line_text))
                 if cursor_x < self.renderer.char_width:
-                    self.renderer.write(cursor_x, y, "_", (255, 255, 0))
-            elif is_current and self.mode == "normal":
-                cursor_x = 5 + min(self.cursor_pos, len(line_text))
-                if cursor_x < self.renderer.char_width:
-                    # Show cursor as highlighted character in normal mode
-                    char = line_text[self.cursor_pos] if self.cursor_pos < len(line_text) else " "
-                    self.renderer.write(cursor_x, y, f"[{char}]", (255, 255, 0))
+                    if self.editor_name == "emacs" or self.mode == "insert":
+                        # Show underscore cursor for emacs and vim insert mode
+                        self.renderer.write(cursor_x, y, "_", (255, 255, 0))
+                    elif self.mode == "normal":
+                        # Show block cursor for vim normal mode
+                        char = line_text[self.cursor_pos] if self.cursor_pos < len(line_text) else " "
+                        self.renderer.write(cursor_x, y, f"[{char}]", (255, 255, 0))
             
             y += 1
         
         # Status line
         status_y = self.renderer.char_height - 2
-        mode_text = f"-- {self.mode.upper()} --" if self.mode != "normal" else ""
+        if self.editor_name == "emacs":
+            # Emacs-style mode line
+            modified_marker = "**" if self.is_modified else "--"
+            mode_text = f"-{modified_marker}:--- "
+        else:
+            mode_text = f"-- {self.mode.upper()} --" if self.mode != "normal" else ""
         file_info = f"{self.filename} [{'modified' if self.is_modified else 'saved'}] {len(self.lines)} lines"
         self.renderer.write(0, status_y, mode_text, (255, 255, 0))
         if self.renderer.char_width - len(file_info) - 1 > 0:

@@ -50,6 +50,7 @@ class SaveSystem:
             
             # Discoveries
             "secret_commands_found": [],  # List of secret command IDs
+            "installed_packages": [],  # List of brew-installed package names
             "filesystem_explored": {
                 "directories_visited": [],
                 "files_read": []
@@ -138,6 +139,45 @@ class SaveSystem:
     def get_secret_count(self):
         """Get number of secrets found"""
         return len(self.data["secret_commands_found"])
+    
+    def install_package(self, package_name):
+        """
+        Mark a package as installed
+        
+        Args:
+            package_name: Name of the package to install
+            
+        Returns:
+            bool: True if newly installed, False if already installed
+        """
+        if "installed_packages" not in self.data:
+            self.data["installed_packages"] = []
+        
+        if package_name not in self.data["installed_packages"]:
+            self.data["installed_packages"].append(package_name)
+            self.save()
+            return True
+        return False
+    
+    def is_package_installed(self, package_name):
+        """
+        Check if a package is installed
+        
+        Args:
+            package_name: Name of the package to check
+            
+        Returns:
+            bool: True if installed, False otherwise
+        """
+        if "installed_packages" not in self.data:
+            return False
+        return package_name in self.data["installed_packages"]
+    
+    def get_installed_packages(self):
+        """Get list of installed package names"""
+        if "installed_packages" not in self.data:
+            return []
+        return self.data["installed_packages"]
     
     # Filesystem Exploration
     def mark_directory_visited(self, path):

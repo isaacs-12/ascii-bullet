@@ -34,9 +34,32 @@ class VirtualFileSystem:
         # Default: "rw-" for most files, "rwx" for .py files
         self.file_permissions = {}  # path -> permission string like "rwx", "rw-", "r--"
         
+        # Default permissions for specific files in the default filesystem
+        self.default_file_permissions = self._get_default_file_permissions()
+        
         # Restore saved state if provided
         if saved_state:
             self._restore_state(saved_state)
+    
+    def _get_default_file_permissions(self):
+        """
+        Define default permissions for specific files in the default filesystem.
+        Files not listed here will use extension-based defaults (.py = rwx, others = rw-)
+        
+        Returns:
+            dict: path -> permission string
+        """
+        return {
+            # Example: A locked Python script that needs to be made executable
+            '/home/pilot/blthll/hello_world.py': 'rw-',
+            
+            # Example: Read-only files
+            '/home/pilot/blthll/data/bullets.dat': 'r--',
+            '/home/pilot/blthll/data/highscores.txt': 'r--',
+            
+            # Example: Secret files with no read permission (for sudo puzzles)
+            # '/home/pilot/blthll/data/secret/password.txt': '---',
+        }
     
     def _get_default_filesystem(self):
         """Get the default read-only filesystem structure"""
@@ -474,11 +497,15 @@ class VirtualFileSystem:
         if not self.file_exists(filename):
             return None
         
-        # Return custom permissions if set
+        # Return custom permissions if set by user (via chmod)
         if full_path in self.file_permissions:
             return self.file_permissions[full_path]
         
-        # Default permissions based on file type
+        # Check for default permissions defined for this specific file
+        if full_path in self.default_file_permissions:
+            return self.default_file_permissions[full_path]
+        
+        # Fall back to extension-based defaults
         if filename.endswith('.py'):
             return "rwx"  # Python files are executable by default
         else:

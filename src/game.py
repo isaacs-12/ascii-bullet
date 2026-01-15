@@ -40,6 +40,9 @@ class Game:
         for event in events:
             if event.type == pygame.QUIT:
                 self.running = False
+            elif event.type == pygame.VIDEORESIZE:
+                # Handle window resize
+                self.renderer.handle_resize(event.w, event.h)
         
         # Pass events to current state
         if self.current_state:

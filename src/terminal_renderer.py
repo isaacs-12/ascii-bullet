@@ -25,12 +25,14 @@ class TerminalRenderer:
         Initialize the terminal renderer
         
         Args:
-            width: Number of character columns
-            height: Number of character rows
+            width: Initial number of character columns
+            height: Initial number of character rows
             cell_size: Size of each character cell in pixels
         """
-        self.char_width = width
-        self.char_height = height
+        # Store initial dimensions
+        self.initial_width = width
+        self.initial_height = height
+        self.font_size = cell_size
         
         # Initialize pygame first
         pygame.init()
@@ -49,22 +51,96 @@ class TerminalRenderer:
         self.cell_width = self.char_pixel_width
         self.cell_height = self.char_pixel_height
         
-        # Calculate window size with frame
+        # Frame settings
         self.frame_thickness = 20
-        self.terminal_width = width * self.cell_width
-        self.terminal_height = height * self.cell_height
-        self.window_width = self.terminal_width + (self.frame_thickness * 2)
-        self.window_height = self.terminal_height + (self.frame_thickness * 2) + 30  # Extra for title bar
+        self.title_bar_height = 30
         
-        # Create the display
-        self.screen = pygame.display.set_mode((self.window_width, self.window_height))
+        # Calculate initial window size
+        self.char_width = width
+        self.char_height = height
+        self._calculate_window_dimensions()
+        
+        # Create the resizable display
+        self.screen = pygame.display.set_mode(
+            (self.window_width, self.window_height),
+            pygame.RESIZABLE
+        )
         pygame.display.set_caption("ASCII BULLET HELL")
         
         # Create buffer for terminal content
-        self.buffer = [[' ' for _ in range(width)] for _ in range(height)]
-        self.color_buffer = [[self.COLORS['fg'] for _ in range(width)] for _ in range(height)]
+        self._resize_buffer(width, height)
+        
+        # Track last known window size for live resize detection
+        self.last_window_size = (self.window_width, self.window_height)
         
         self.clock = pygame.time.Clock()
+    
+    def _calculate_window_dimensions(self):
+        """Calculate window dimensions based on character grid size"""
+        self.terminal_width = self.char_width * self.cell_width
+        self.terminal_height = self.char_height * self.cell_height
+        self.window_width = self.terminal_width + (self.frame_thickness * 2)
+        self.window_height = self.terminal_height + (self.frame_thickness * 2) + self.title_bar_height
+    
+    def _resize_buffer(self, new_width, new_height):
+        """
+        Resize the terminal buffer, preserving existing content where possible
+        
+        Args:
+            new_width: New number of columns
+            new_height: New number of rows
+        """
+        old_buffer = getattr(self, 'buffer', None)
+        old_color_buffer = getattr(self, 'color_buffer', None)
+        
+        # Create new buffers
+        self.buffer = [[' ' for _ in range(new_width)] for _ in range(new_height)]
+        self.color_buffer = [[self.COLORS['fg'] for _ in range(new_width)] for _ in range(new_height)]
+        
+        # Copy old content if it exists
+        if old_buffer:
+            old_height = len(old_buffer)
+            old_width = len(old_buffer[0]) if old_height > 0 else 0
+            
+            for row in range(min(old_height, new_height)):
+                for col in range(min(old_width, new_width)):
+                    self.buffer[row][col] = old_buffer[row][col]
+                    self.color_buffer[row][col] = old_color_buffer[row][col]
+    
+    def handle_resize(self, new_width, new_height):
+        """
+        Handle window resize event
+        
+        Args:
+            new_width: New window width in pixels
+            new_height: New window height in pixels
+        """
+        # Accept whatever size the OS gives us (especially during drag)
+        self.window_width = new_width
+        self.window_height = new_height
+        
+        # Recreate the surface at the new size
+        self.screen = pygame.display.set_mode((new_width, new_height), pygame.RESIZABLE)
+        self.last_window_size = (new_width, new_height)
+        
+        # Calculate how many characters can fit in the available space
+        available_width = new_width - (self.frame_thickness * 2)
+        available_height = new_height - (self.frame_thickness * 2) - self.title_bar_height
+        
+        new_char_width = max(20, available_width // self.cell_width)  # Minimum 20 columns
+        new_char_height = max(10, available_height // self.cell_height)  # Minimum 10 rows
+        
+        # Calculate exact terminal size for this character grid
+        self.terminal_width = new_char_width * self.cell_width
+        self.terminal_height = new_char_height * self.cell_height
+        
+        # Update character dimensions and resize buffer if needed
+        if new_char_width != self.char_width or new_char_height != self.char_height:
+            self.char_width = new_char_width
+            self.char_height = new_char_height
+            
+            # Resize buffer to match new character grid
+            self._resize_buffer(new_char_width, new_char_height)
     
     def clear(self):
         """Clear the terminal buffer"""
@@ -110,22 +186,37 @@ class TerminalRenderer:
             self.write(x, row, '│', color)
             self.write(x + width - 1, row, '│', color)
     
+    def check_resize(self):
+        """Check if window was resized and update accordingly"""
+        current_size = self.screen.get_size()
+        if current_size != self.last_window_size:
+            self.handle_resize(current_size[0], current_size[1])
+            self.last_window_size = current_size
+    
     def render(self):
         """Render the terminal to the screen"""
+        # Check for live resize (during drag operations)
+        self.check_resize()
+        
         # Fill background
         self.screen.fill(self.COLORS['frame'])
         
         # Draw title bar
-        title_bar_rect = pygame.Rect(0, 0, self.window_width, 30)
+        title_bar_rect = pygame.Rect(0, 0, self.window_width, self.title_bar_height)
         pygame.draw.rect(self.screen, self.COLORS['frame_highlight'], title_bar_rect)
         
         title_surface = self.title_font.render("● ASCII BULLET HELL", True, self.COLORS['menu_normal'])
         self.screen.blit(title_surface, (10, 7))
         
+        # Add size indicator in title bar
+        size_text = f"{self.char_width}x{self.char_height}"
+        size_surface = self.title_font.render(size_text, True, self.COLORS['menu_normal'])
+        self.screen.blit(size_surface, (self.window_width - size_surface.get_width() - 10, 7))
+        
         # Draw frame with 3D effect
         terminal_rect = pygame.Rect(
             self.frame_thickness,
-            30 + self.frame_thickness,
+            self.title_bar_height + self.frame_thickness,
             self.terminal_width,
             self.terminal_height
         )
@@ -146,7 +237,7 @@ class TerminalRenderer:
                     color = self.color_buffer[row][col]
                     char_surface = self.font.render(char, True, color)
                     x = self.frame_thickness + (col * self.cell_width)
-                    y = 30 + self.frame_thickness + (row * self.cell_height)
+                    y = self.title_bar_height + self.frame_thickness + (row * self.cell_height)
                     self.screen.blit(char_surface, (x, y))
         
         pygame.display.flip()

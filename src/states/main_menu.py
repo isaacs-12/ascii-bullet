@@ -487,6 +487,33 @@ class MainMenuState(BaseState):
         elif cmd_lower in ["clear", "cls"]:
             self.output_lines = []
         
+        elif cmd_lower.startswith("ls -"):
+            # List files with details (including permissions)
+            args = cmd_lower[4:].strip()
+            if args in ["l", "la", "al", "a", ""]:
+                items = self.filesystem.list_directory()
+                if items:
+                    # Show detailed listing with permissions
+                    for item in items:
+                        if item.endswith('/'):
+                            # Directory
+                            self.add_output(f"drwxr-xr-x  {item}")
+                        else:
+                            # File - show actual permissions
+                            perms = self.filesystem.get_permissions(item)
+                            if perms:
+                                self.add_output(f"-{perms}------  {item}")
+                            else:
+                                self.add_output(f"-rw-------  {item}")
+                else:
+                    self.add_output("(empty directory)")
+            else:
+                self.add_output(f"ls: invalid option -- '{args}'")
+            self.add_output("")
+            # Track directory visit
+            current_path = self.filesystem.get_pwd()
+            self.game.save_system.mark_directory_visited(current_path)
+        
         elif cmd_lower in ["ls", "dir"]:
             # List directory contents
             contents = self.filesystem.list_directory()
@@ -606,6 +633,24 @@ class MainMenuState(BaseState):
                 self.add_output("Usage: mv <source> <destination>")
             self.add_output("")
         
+        elif cmd_lower.startswith("chmod "):
+            # Change file permissions
+            args = command[6:].strip().split()
+            if len(args) == 2:
+                permissions, filename = args
+                success, error = self.filesystem.set_permissions(filename, permissions)
+                if success:
+                    self._save_filesystem()
+                else:
+                    self.add_output(error)
+            else:
+                self.add_output("Usage: chmod <mode> <filename>")
+                self.add_output("Examples:")
+                self.add_output("  chmod 755 script.py   # rwx (read, write, execute)")
+                self.add_output("  chmod 644 data.txt    # rw- (read, write)")
+                self.add_output("  chmod 444 readonly.txt # r-- (read only)")
+            self.add_output("")
+        
         elif cmd_lower.startswith("vim ") or cmd_lower.startswith("vi ") or cmd_lower.startswith("edit "):
             # Open text editor
             parts = command.split(None, 1)
@@ -655,31 +700,36 @@ class MainMenuState(BaseState):
                 self.add_output("Error: Only .py files can be executed")
                 self.add_output("")
             else:
-                success, content = self.filesystem.read_file(filename)
-                if not success:
-                    self.add_output(content)  # Error message
+                # Check execute permission first
+                if not self.filesystem.check_permission(filename, 'x'):
+                    self.add_output(f"Permission denied: '{filename}'")
                     self.add_output("")
                 else:
-                    self.add_output(f"Executing {filename}...")
-                    self.add_output("")
-                    
-                    # Import and use script executor
-                    from src.script_executor import ScriptExecutor
-                    executor = ScriptExecutor()
-                    
-                    # Execute with output callback
-                    exec_success, error = executor.execute(
-                        content, 
-                        self.filesystem, 
-                        self.add_output
-                    )
-                    
-                    if not exec_success:
+                    success, content = self.filesystem.read_file(filename)
+                    if not success:
+                        self.add_output(content)  # Error message
                         self.add_output("")
-                        self.add_output(f"Execution failed: {error}")
-                    
-                    self.add_output("")
-                    self._mark_secret_found("script_runner")
+                    else:
+                        self.add_output(f"Executing {filename}...")
+                        self.add_output("")
+                        
+                        # Import and use script executor
+                        from src.script_executor import ScriptExecutor
+                        executor = ScriptExecutor()
+                        
+                        # Execute with output callback
+                        exec_success, error = executor.execute(
+                            content, 
+                            self.filesystem, 
+                            self.add_output
+                        )
+                        
+                        if not exec_success:
+                            self.add_output("")
+                            self.add_output(f"Execution failed: {error}")
+                        
+                        self.add_output("")
+                        self._mark_secret_found("script_runner")
         
         elif " > " in command or " >> " in command:
             # Write to file (echo or other content)

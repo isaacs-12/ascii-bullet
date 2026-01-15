@@ -30,6 +30,10 @@ class VirtualFileSystem:
         self.user_modified_files = {}  # path -> content
         self.user_deleted_files = set()  # paths of default files that have been deleted/moved
         
+        # File permissions: path -> "rwx" string (read, write, execute)
+        # Default: "rw-" for most files, "rwx" for .py files
+        self.file_permissions = {}  # path -> permission string like "rwx", "rw-", "r--"
+        
         # Restore saved state if provided
         if saved_state:
             self._restore_state(saved_state)
@@ -341,6 +345,11 @@ class VirtualFileSystem:
         """
         full_path = self.get_pwd() + '/' + filename
         
+        # Check write permission for existing files
+        if self.file_exists(filename):
+            if not self.check_permission(filename, 'w'):
+                return (False, f"Permission denied: '{filename}'")
+        
         # Get existing content
         existing = None
         if full_path in self.user_created_files:
@@ -386,6 +395,10 @@ class VirtualFileSystem:
             tuple: (success, error_message or None)
         """
         full_path = self.get_pwd() + '/' + filename
+        
+        # Check write permission (needed to delete)
+        if not self.check_permission(filename, 'w'):
+            return (False, f"Permission denied: '{filename}'")
         
         # Delete user-created files
         if full_path in self.user_created_files:
@@ -444,6 +457,92 @@ class VirtualFileSystem:
         
         self.user_created_dirs.remove(full_path)
         return (True, None)
+    
+    def get_permissions(self, filename):
+        """
+        Get file permissions
+        
+        Args:
+            filename: Name of file
+            
+        Returns:
+            str: Permission string like "rwx", "rw-", "r--", or None if file doesn't exist
+        """
+        full_path = self.get_pwd() + '/' + filename
+        
+        # Check if file exists
+        if not self.file_exists(filename):
+            return None
+        
+        # Return custom permissions if set
+        if full_path in self.file_permissions:
+            return self.file_permissions[full_path]
+        
+        # Default permissions based on file type
+        if filename.endswith('.py'):
+            return "rwx"  # Python files are executable by default
+        else:
+            return "rw-"  # Regular files are read-write by default
+    
+    def set_permissions(self, filename, permissions):
+        """
+        Set file permissions
+        
+        Args:
+            filename: Name of file
+            permissions: Permission string like "rwx", "rw-", "r--", or octal like "755"
+            
+        Returns:
+            tuple: (success, error_message or None)
+        """
+        full_path = self.get_pwd() + '/' + filename
+        
+        # Check if file exists
+        if not self.file_exists(filename):
+            return (False, f"chmod: cannot access '{filename}': No such file or directory")
+        
+        # Parse permissions
+        if permissions.isdigit() and len(permissions) == 3:
+            # Octal format (e.g., "644", "755")
+            try:
+                mode = int(permissions[2])  # Just use the user permissions for simplicity
+                perm_str = ""
+                perm_str += "r" if mode & 4 else "-"
+                perm_str += "w" if mode & 2 else "-"
+                perm_str += "x" if mode & 1 else "-"
+                permissions = perm_str
+            except ValueError:
+                return (False, f"chmod: invalid mode: '{permissions}'")
+        elif len(permissions) == 3 and all(c in 'rwx-' for c in permissions):
+            # Symbolic format (e.g., "rwx", "rw-", "r--")
+            pass
+        else:
+            return (False, f"chmod: invalid mode: '{permissions}'")
+        
+        # Set permissions
+        self.file_permissions[full_path] = permissions
+        return (True, None)
+    
+    def check_permission(self, filename, permission):
+        """
+        Check if user has a specific permission on a file
+        
+        Args:
+            filename: Name of file
+            permission: 'r' for read, 'w' for write, 'x' for execute
+            
+        Returns:
+            bool: True if permission is granted, False otherwise
+        """
+        perms = self.get_permissions(filename)
+        if perms is None:
+            return False
+        
+        perm_map = {'r': 0, 'w': 1, 'x': 2}
+        if permission not in perm_map:
+            return False
+        
+        return perms[perm_map[permission]] == permission
     
     def move_file(self, source, destination):
         """
@@ -573,6 +672,10 @@ class VirtualFileSystem:
         if full_path in self.user_deleted_files:
             return (False, f"File '{filename}' not found")
         
+        # Check read permission
+        if not self.check_permission(filename, 'r'):
+            return (False, f"Permission denied: '{filename}'")
+        
         # Check user-modified files first
         if full_path in self.user_modified_files:
             content = self.user_modified_files[full_path]
@@ -610,7 +713,8 @@ class VirtualFileSystem:
             'user_created_files': self.user_created_files,
             'user_created_dirs': self.user_created_dirs,
             'user_modified_files': self.user_modified_files,
-            'user_deleted_files': list(self.user_deleted_files)
+            'user_deleted_files': list(self.user_deleted_files),
+            'file_permissions': self.file_permissions
         }
     
     def _restore_state(self, state):
@@ -625,6 +729,8 @@ class VirtualFileSystem:
             self.user_modified_files = state['user_modified_files']
         if 'user_deleted_files' in state:
             self.user_deleted_files = set(state['user_deleted_files'])
+        if 'file_permissions' in state:
+            self.file_permissions = state['file_permissions']
     
     def reset_to_defaults(self):
         """Reset filesystem to default state"""
@@ -633,4 +739,5 @@ class VirtualFileSystem:
         self.user_created_dirs = []
         self.user_modified_files = {}
         self.user_deleted_files = set()
+        self.file_permissions = {}
 

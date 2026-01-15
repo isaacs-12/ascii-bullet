@@ -64,6 +64,7 @@ def get_help_text():
       "  mv <src> <dst> - Move or rename file",
       "  chmod <m> <f>  - Change file permissions",
       "  ls -l          - List files with permissions",
+      "  sudo <cmd>     - Execute command with root privileges",
       "  echo text > f  - Write to file (overwrites)",
       "  echo text >> f - Append to file",
       "  python <file>  - Execute Python script (or 'run')",

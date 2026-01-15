@@ -58,6 +58,15 @@ class MainMenuState(BaseState):
         self.editor = None
         self.editor_active = False
         self.editor_filename = None
+        
+        # Sudo authentication state
+        self.sudo_authenticated = False
+        self.sudo_timestamp = 0
+        self.sudo_timeout = 300000  # 5 minutes in milliseconds
+        self.sudo_password = "WallySmith"
+        self.waiting_for_password = False
+        self.pending_sudo_command = None
+        self.password_buffer = ""
     
     def enter(self):
         """Called when entering this state"""
@@ -105,14 +114,26 @@ class MainMenuState(BaseState):
                 self._track_konami_code(event)
                 
                 if event.key == pygame.K_RETURN:
-                    # Execute command
-                    self.execute_command(self.input_buffer.strip())
-                    self.input_buffer = ""
-                    self.history_index = -1
+                    # Check if waiting for password
+                    if self.waiting_for_password:
+                        self._check_sudo_password(self.password_buffer)
+                        self.password_buffer = ""
+                        self.waiting_for_password = False
+                        self.input_buffer = ""
+                    else:
+                        # Execute command normally
+                        self.execute_command(self.input_buffer.strip())
+                        self.input_buffer = ""
+                        self.history_index = -1
                 
                 elif event.key == pygame.K_BACKSPACE:
                     # Delete last character
-                    if self.input_buffer:
+                    if self.waiting_for_password:
+                        if self.password_buffer:
+                            self.password_buffer = self.password_buffer[:-1]
+                            if self.input_buffer:
+                                self.input_buffer = self.input_buffer[:-1]
+                    elif self.input_buffer:
                         self.input_buffer = self.input_buffer[:-1]
                 
                 elif event.key == pygame.K_UP:
@@ -142,7 +163,12 @@ class MainMenuState(BaseState):
                     # Add character to input buffer
                     prompt_len = len(self.get_prompt())
                     if len(self.input_buffer) < self.renderer.char_width - prompt_len - 2:
-                        self.input_buffer += event.unicode
+                        if self.waiting_for_password:
+                            # Store actual character but display asterisk
+                            self.password_buffer += event.unicode
+                            self.input_buffer += '*'
+                        else:
+                            self.input_buffer += event.unicode
     
     def update(self, dt):
         """Update terminal state"""
@@ -187,6 +213,12 @@ class MainMenuState(BaseState):
                         self._start_typing_next_line()
                     else:
                         self.is_typing = False
+        
+        # Check sudo timeout (just checks, doesn't show message)
+        if self.sudo_authenticated:
+            current_time = pygame.time.get_ticks()
+            if current_time - self.sudo_timestamp > self.sudo_timeout:
+                self.sudo_authenticated = False
     
     def complete_boot(self):
         """Complete the boot sequence and show main screen"""
@@ -226,11 +258,6 @@ class MainMenuState(BaseState):
         elif cmd_lower == "whoami":
             current_user = self.filesystem.get_current_user()
             self.add_output(current_user)
-            self.add_output("")
-            return True
-        
-        elif cmd_lower in ["sudo", "sudo su"]:
-            self.add_output("Nice try. You already have all the permissions here.")
             self.add_output("")
             return True
         
@@ -460,6 +487,11 @@ class MainMenuState(BaseState):
         
         # Parse and execute
         cmd_lower = command.lower()
+        
+        # Handle sudo commands
+        if cmd_lower.startswith("sudo "):
+            self._handle_sudo_command(command[5:].strip())
+            return
         
         if cmd_lower in ["start", "new", "newgame", "new game", "begin"]:
             self.add_output("Starting new game...")
@@ -769,6 +801,11 @@ class MainMenuState(BaseState):
                 self.add_output("Invalid syntax. Use: echo text > file  or  echo text >> file")
                 self.add_output("")
         
+        elif cmd_lower == "sudo":
+            # sudo with no arguments
+            self.add_output("usage: sudo <command>")
+            self.add_output("")
+        
         elif self._easter_egg_commands(cmd_lower=cmd_lower, command=command):
             return
         
@@ -903,8 +940,91 @@ class MainMenuState(BaseState):
         fs_state = self.filesystem.get_state()
         self.game.save_system.save_filesystem(fs_state)
     
+    def _handle_sudo_command(self, command):
+        """
+        Handle sudo command execution
+        
+        Args:
+            command: The command to execute with sudo
+        """
+        if not command:
+            self.add_output("usage: sudo <command>")
+            self.add_output("")
+            return
+        
+        # Check if sudo is already valid
+        if self._is_sudo_valid():
+            # Execute command as root
+            self._execute_as_root(command)
+        else:
+            # Need password - prompt for it
+            self.pending_sudo_command = command
+            self.waiting_for_password = True
+            # Don't add output here - get_prompt() will show password prompt
+    
+    def _check_sudo_password(self, password):
+        """
+        Check if the provided sudo password is correct
+        
+        Args:
+            password: The password entered by user
+        """
+        if password == self.sudo_password:
+            # Correct password
+            self.sudo_authenticated = True
+            self.sudo_timestamp = pygame.time.get_ticks()
+            self.add_output("")
+            
+            # Execute the pending command
+            if self.pending_sudo_command:
+                self._execute_as_root(self.pending_sudo_command)
+                self.pending_sudo_command = None
+            
+            self._mark_secret_found("sudo_user")
+        else:
+            # Wrong password
+            self.add_output("")
+            self.add_output("Sorry, try again.")
+            self.add_output("")
+            self.pending_sudo_command = None
+    
+    def _is_sudo_valid(self):
+        """Check if sudo authentication is still valid"""
+        if not self.sudo_authenticated:
+            return False
+        
+        # Check if timeout has expired
+        current_time = pygame.time.get_ticks()
+        if current_time - self.sudo_timestamp > self.sudo_timeout:
+            self.sudo_authenticated = False
+            return False
+        
+        return True
+    
+    def _execute_as_root(self, command):
+        """
+        Execute a command with root privileges
+        
+        Args:
+            command: The command to execute
+        """
+        # Temporarily become root
+        original_user = self.filesystem.get_current_user()
+        self.filesystem.set_user("root")
+        
+        try:
+            # Execute the command
+            self.execute_command(command)
+        finally:
+            # Always restore original user
+            self.filesystem.set_user(original_user)
+    
     def get_prompt(self):
         """Get the current prompt string with directory"""
+        # If waiting for password, show password prompt
+        if self.waiting_for_password:
+            return "[sudo] password: "
+        
         # Get just the last part of the path for brevity
         path_parts = self.filesystem.current_path
         if path_parts:

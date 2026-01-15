@@ -224,7 +224,8 @@ class MainMenuState(BaseState):
             return True
         
         elif cmd_lower == "whoami":
-            self.add_output("You are a brave pilot in a world of bullets.")
+            current_user = self.filesystem.get_current_user()
+            self.add_output(current_user)
             self.add_output("")
             return True
         
@@ -493,18 +494,20 @@ class MainMenuState(BaseState):
             if args in ["l", "la", "al", "a", ""]:
                 items = self.filesystem.list_directory()
                 if items:
-                    # Show detailed listing with permissions
+                    # Show detailed listing with permissions and owner
                     for item in items:
                         if item.endswith('/'):
-                            # Directory
-                            self.add_output(f"drwxr-xr-x  {item}")
+                            # Directory - get owner (will default to current user if not specified)
+                            owner = self.filesystem.get_file_owner(item)
+                            self.add_output(f"drwxr-xr-x  {owner:6}  {item}")
                         else:
-                            # File - show actual permissions
+                            # File - show actual permissions and owner
                             perms = self.filesystem.get_permissions(item)
+                            owner = self.filesystem.get_file_owner(item)
                             if perms:
-                                self.add_output(f"-{perms}------  {item}")
+                                self.add_output(f"-{perms}------  {owner:6}  {item}")
                             else:
-                                self.add_output(f"-rw-------  {item}")
+                                self.add_output(f"-rw-------  {owner:6}  {item}")
                 else:
                     self.add_output("(empty directory)")
             else:
@@ -907,7 +910,7 @@ class MainMenuState(BaseState):
         if path_parts:
             current_dir = path_parts[-1]
         else:
-            current_dir = "~"
+            current_dir = "/"
         return f"[{current_dir}]> "
     
     def add_output(self, text):

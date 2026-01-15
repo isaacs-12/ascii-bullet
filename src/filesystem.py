@@ -37,6 +37,10 @@ class VirtualFileSystem:
         # Default permissions for specific files in the default filesystem
         self.default_file_permissions = self._get_default_file_permissions()
         
+        # File ownership system
+        self.current_user = "pilot"  # Current user (can be "pilot" or "root")
+        self.default_file_owners = self._get_default_file_owners()
+        
         # Restore saved state if provided
         if saved_state:
             self._restore_state(saved_state)
@@ -57,8 +61,23 @@ class VirtualFileSystem:
             '/home/pilot/blthll/data/bullets.dat': 'r--',
             '/home/pilot/blthll/data/highscores.txt': 'r--',
             
-            # Example: Secret files with no read permission (for sudo puzzles)
-            # '/home/pilot/blthll/data/secret/password.txt': '---',
+            # Root-owned system file (no permissions for pilot - needs sudo)
+            '/system/core/init.py': '---',
+        }
+    
+    def _get_default_file_owners(self):
+        """
+        Define file ownership for the default filesystem.
+        Files not listed are owned by the current user (pilot).
+        
+        Returns:
+            dict: path -> owner username
+        """
+        return {
+            # System files owned by root
+            '/system': 'root',
+            '/system/core': 'root',
+            '/system/core/init.py': 'root',
         }
     
     def _get_default_filesystem(self):
@@ -177,6 +196,29 @@ class VirtualFileSystem:
                         "Unauthorized access will result in more bullets."
                     ]
                 }
+            },
+            'system': {
+                'dirs': {
+                    'core': {
+                        'dirs': {},
+                        'files': {
+                            'init.py': [
+                                "#!/usr/bin/env python3",
+                                "# BLTHLL System Initialization Script",
+                                "# WARNING: This file is owned by root",
+                                "# Modifications require elevated privileges",
+                                "",
+                                "def initialize_system():",
+                                "    print('Initializing BLTHLL core systems...')",
+                                "    print('[OK] All systems operational')",
+                                "",
+                                "if __name__ == '__main__':",
+                                "    initialize_system()",
+                            ]
+                        }
+                    }
+                },
+                'files': {}
             }
         }
     
@@ -207,15 +249,21 @@ class VirtualFileSystem:
         current_dir = self.get_current_directory()
         contents = []
         
-        # Add directories
-        if 'dirs' in current_dir:
-            for dir_name in sorted(current_dir['dirs'].keys()):
+        # Special case: at root directory
+        if len(self.current_path) == 0:
+            # At root, directories are top-level keys
+            for dir_name in sorted(current_dir.keys()):
                 contents.append(f"{dir_name}/")
-        
-        # Add files
-        if 'files' in current_dir:
-            for file_name in sorted(current_dir['files'].keys()):
-                contents.append(file_name)
+        else:
+            # Add directories
+            if 'dirs' in current_dir:
+                for dir_name in sorted(current_dir['dirs'].keys()):
+                    contents.append(f"{dir_name}/")
+            
+            # Add files
+            if 'files' in current_dir:
+                for file_name in sorted(current_dir['files'].keys()):
+                    contents.append(file_name)
         
         return contents
     
@@ -231,13 +279,18 @@ class VirtualFileSystem:
         """
         if path == '..':
             # Go to parent directory
-            if len(self.current_path) > 1:
+            if len(self.current_path) > 0:
                 self.current_path.pop()
                 return (True, None)
             else:
                 return (False, "Already at root directory")
         
-        elif path == '/' or path == '~':
+        elif path == '/':
+            # Go to root directory
+            self.current_path = []
+            return (True, None)
+        
+        elif path == '~':
             # Go to home
             self.current_path = ['home', 'pilot', 'blthll']
             return (True, None)
@@ -330,6 +383,37 @@ class VirtualFileSystem:
             else:
                 total += len(content)
         return total
+    
+    def file_exists(self, filename):
+        """
+        Check if a file exists in the current directory
+        
+        Args:
+            filename: Name of file to check
+            
+        Returns:
+            bool: True if file exists, False otherwise
+        """
+        full_path = self.get_pwd() + '/' + filename
+        
+        # Check if it's been deleted
+        if full_path in self.user_deleted_files:
+            return False
+        
+        # Check user-created files
+        if full_path in self.user_created_files:
+            return True
+        
+        # Check user-modified files
+        if full_path in self.user_modified_files:
+            return True
+        
+        # Check default files
+        current_dir = self.get_current_directory()
+        if 'files' in current_dir and filename in current_dir['files']:
+            return True
+        
+        return False
     
     def create_file(self, filename, content=""):
         """
@@ -511,6 +595,43 @@ class VirtualFileSystem:
         else:
             return "rw-"  # Regular files are read-write by default
     
+    def get_file_owner(self, filename):
+        """
+        Get the owner of a file or directory
+        
+        Args:
+            filename: Name of file or directory (may have trailing / for dirs)
+            
+        Returns:
+            str: Owner username ("pilot" or "root"), or current user if not specified
+        """
+        # Strip trailing slash if present (for directories)
+        name = filename.rstrip('/')
+        full_path = self.get_pwd() + '/' + name
+        
+        # Normalize double slashes at root
+        full_path = full_path.replace('//', '/')
+        
+        # Check if file has a defined owner
+        if full_path in self.default_file_owners:
+            return self.default_file_owners[full_path]
+        
+        # Default: files are owned by the current user
+        return self.current_user
+    
+    def set_user(self, username):
+        """
+        Set the current user (for sudo implementation)
+        
+        Args:
+            username: "pilot" or "root"
+        """
+        self.current_user = username
+    
+    def get_current_user(self):
+        """Get the current username"""
+        return self.current_user
+    
     def set_permissions(self, filename, permissions):
         """
         Set file permissions
@@ -527,6 +648,11 @@ class VirtualFileSystem:
         # Check if file exists
         if not self.file_exists(filename):
             return (False, f"chmod: cannot access '{filename}': No such file or directory")
+        
+        # Check ownership (only root or owner can chmod)
+        owner = self.get_file_owner(filename)
+        if self.current_user != "root" and self.current_user != owner:
+            return (False, f"chmod: changing permissions of '{filename}': Operation not permitted")
         
         # Parse permissions
         if permissions.isdigit() and len(permissions) == 3:
@@ -649,6 +775,13 @@ class VirtualFileSystem:
         contents = []
         current_path = self.get_pwd()
         
+        # Special case: at root directory
+        if len(self.current_path) == 0:
+            # At root, directories are top-level keys
+            for dir_name in sorted(current_dir.keys()):
+                contents.append(f"{dir_name}/")
+            return contents
+        
         # Add default directories
         if 'dirs' in current_dir:
             for dir_name in sorted(current_dir['dirs'].keys()):
@@ -736,18 +869,19 @@ class VirtualFileSystem:
     def get_state(self):
         """Get filesystem state for saving"""
         return {
-            'current_path': self.current_path,
+            # Note: current_path is NOT saved - always start in home directory
             'user_created_files': self.user_created_files,
             'user_created_dirs': self.user_created_dirs,
             'user_modified_files': self.user_modified_files,
             'user_deleted_files': list(self.user_deleted_files),
-            'file_permissions': self.file_permissions
+            'file_permissions': self.file_permissions,
+            # Note: current_user is NOT saved - always start as 'pilot'
         }
     
     def _restore_state(self, state):
         """Restore filesystem state from save"""
-        if 'current_path' in state:
-            self.current_path = state['current_path']
+        # Note: current_path is never restored - always start in home directory
+        # Note: current_user is never restored - always start as 'pilot'
         if 'user_created_files' in state:
             self.user_created_files = state['user_created_files']
         if 'user_created_dirs' in state:
@@ -767,4 +901,5 @@ class VirtualFileSystem:
         self.user_modified_files = {}
         self.user_deleted_files = set()
         self.file_permissions = {}
+        self.current_user = "pilot"
 

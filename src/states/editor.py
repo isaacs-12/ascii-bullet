@@ -38,6 +38,7 @@ class EditorState(BaseState):
         self.command_buffer = ""
         self.message = ""
         self.is_modified = False
+        self.is_readonly = False  # Set to True if file can't be read due to permissions
         self.ctrl_x_pressed = False  # For emacs C-x prefix
         
         # Load file if it exists
@@ -47,9 +48,29 @@ class EditorState(BaseState):
                 self.lines = [str(line) for line in content]
             else:
                 self.lines = [str(content)]
+            self.is_readonly = False
         else:
-            # New file
-            self.lines = [""]
+            # Check if it's a permission error or just a new file
+            if "Permission denied" in content:
+                # Permission denied - show error in the file
+                self.lines = [
+                    "=" * 60,
+                    "ERROR: Permission Denied",
+                    "=" * 60,
+                    "",
+                    f"You do not have permission to read this file: {filename}",
+                    "",
+                    "This file may be owned by another user (e.g., root).",
+                    "You may need to use 'sudo' or change file permissions with 'chmod'.",
+                    "",
+                    "Press :q to quit without making changes.",
+                    ""
+                ]
+                self.is_readonly = True
+            else:
+                # New file
+                self.lines = [""]
+                self.is_readonly = False
         
         # Ensure at least one line
         if not self.lines:
@@ -57,7 +78,9 @@ class EditorState(BaseState):
     
     def enter(self):
         """Called when entering this state"""
-        if self.editor_name == "emacs":
+        if self.is_readonly:
+            self.message = f"PERMISSION DENIED: {self.filename} (read-only) | :q to quit"
+        elif self.editor_name == "emacs":
             self.message = f"GNU Emacs: {self.filename} | C-x C-s=save, C-x C-c=quit"
         else:
             self.message = f"Editing: {self.filename} | ESC=normal, i=insert, :w=save, :q=quit, :wq=save&quit"
@@ -81,6 +104,22 @@ class EditorState(BaseState):
     
     def _handle_emacs_mode(self, event):
         """Handle keys in emacs mode (always editing)"""
+        # Check if file is readonly (except for quit commands)
+        if self.is_readonly:
+            # Only allow C-x C-c to quit
+            if self.ctrl_x_pressed:
+                if event.mod & pygame.KMOD_CTRL and event.key == pygame.K_c:
+                    self.game.change_state(self.previous_state, call_enter=False)
+                self.ctrl_x_pressed = False
+                return
+            elif event.mod & pygame.KMOD_CTRL and event.key == pygame.K_x:
+                self.ctrl_x_pressed = True
+                return
+            # All other keys blocked
+            if event.unicode and event.unicode.isprintable():
+                self.message = "Error: File is read-only (permission denied)"
+            return
+        
         # If we're waiting for the second key in C-x sequence
         if self.ctrl_x_pressed:
             self.ctrl_x_pressed = False
@@ -165,16 +204,17 @@ class EditorState(BaseState):
     def _handle_normal_mode(self, event):
         """Handle keys in normal mode"""
         if event.key == pygame.K_ESCAPE:
-            # Return to previous state
-            if self.is_modified:
-                self.message = "Warning: Unsaved changes! Use :w to save or :q! to quit without saving"
-            else:
-                self.game.change_state(self.previous_state, call_enter=False)
+            # ESC in normal mode does nothing (already in normal mode)
+            # Just update the message to show we're in normal mode
+            self.message = f"Editing: {self.filename} | ESC=normal, i=insert, :w=save, :q=quit, :wq=save&quit"
         
         elif event.key == pygame.K_i:
-            # Enter insert mode
-            self.mode = "insert"
-            self.message = "-- INSERT MODE -- (ESC to return to normal mode)"
+            # Enter insert mode (only if not readonly)
+            if self.is_readonly:
+                self.message = "Error: File is read-only (permission denied)"
+            else:
+                self.mode = "insert"
+                self.message = "-- INSERT MODE -- (ESC to return to normal mode)"
         
         elif event.key == pygame.K_UP:
             # Move up
@@ -315,6 +355,11 @@ class EditorState(BaseState):
     
     def _save_file(self):
         """Save the file"""
+        # Check if file is readonly
+        if self.is_readonly:
+            self.message = "Error: Cannot save - file is read-only (permission denied)"
+            return False
+        
         try:
             full_path = self.filesystem.get_pwd() + '/' + self.filename
             

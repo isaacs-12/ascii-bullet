@@ -4,6 +4,7 @@ import sys
 import pygame
 from src.terminal_renderer import TerminalRenderer
 from src.states.main_menu import MainMenuState
+from src.save_system import SaveSystem
 
 
 class Game:
@@ -11,6 +12,9 @@ class Game:
     
     def __init__(self):
         """Initialize the game"""
+        # Initialize save system
+        self.save_system = SaveSystem()
+        
         # Create terminal renderer
         self.renderer = TerminalRenderer(width=80, height=50, cell_size=12)
         

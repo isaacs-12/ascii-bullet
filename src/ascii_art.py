@@ -46,6 +46,8 @@ def get_help_text():
         "  help        - Show this help",
         "  about       - About this game",
         "  clear       - Clear the terminal",
+        "  highscores  - View top scores",
+        "  stats       - View your statistics",
         "",
         "Filesystem commands:",
         "  ls / dir    - List directory contents",
@@ -58,6 +60,7 @@ def get_help_text():
         "  - Press TAB after 'cd' or 'cat' for auto-completion",
         "  - UP/DOWN arrows to recall command history",
         "  - Explore the filesystem for secrets!",
+        "  - Your progress is automatically saved",
         "",
     ]
 

@@ -53,6 +53,8 @@ Type these commands in the terminal:
 - **help** - Show available commands
 - **about** - About this game
 - **clear** - Clear the terminal
+- **highscores** - View top 10 high scores
+- **stats** - View your statistics and progress
 - **secret** - Check your easter egg progress
 
 ### Terminal Controls
@@ -98,6 +100,16 @@ The game window features:
 - Large ASCII art title "BLTHLL"
 - Animated boot sequence
 - Interactive command prompt with blinking cursor
+
+## 💾 Save System
+
+The game **automatically saves** your progress:
+- High scores (top 10)
+- Secret commands discovered
+- Filesystem exploration (directories visited, files read)
+- Game statistics
+
+Save file location: `~/.ascii-bullet/save.json`
 
 ## 🥚 Easter Eggs & Hidden Content
 
@@ -162,9 +174,12 @@ The game features a **bullet hell** dodging mechanic where you must survive wave
 - [x] Camera/viewport system
 - [x] Bullet patterns and enemies
 - [x] Level configuration system
+- [x] Enemy movement and spawning
+- [x] Proximity scoring system
+- [x] Save/Load system (JSON-based)
+- [x] High scores tracking
+- [x] Statistics tracking
 - [ ] More enemy types and patterns
-- [ ] Save/Load system
-- [ ] Scoring and high scores
 - [ ] Multiple levels with progression
 - [ ] Power-ups and abilities
 - [ ] Sound effects and music

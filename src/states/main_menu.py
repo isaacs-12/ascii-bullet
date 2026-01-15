@@ -33,8 +33,9 @@ class MainMenuState(BaseState):
         self.command_history = []
         self.history_index = -1
         
-        # Easter egg tracking
-        self.secret_commands_found = set()
+        # Easter egg tracking (load from save)
+        saved_secrets = game.save_system.get_secrets_found()
+        self.secret_commands_found = set(saved_secrets)
         
         # Virtual filesystem
         self.filesystem = VirtualFileSystem()
@@ -198,27 +199,27 @@ class MainMenuState(BaseState):
         elif "rm -rf" in cmd_lower or "rm -fr" in cmd_lower:
             self.add_output("ERROR: Cannot delete bullets. They multiply too fast!")
             self.add_output("")
-            self.secret_commands_found.add("destructive")
+            self._mark_secret_found("destructive")
             return True
         
         elif cmd_lower == "konami":
             self.add_output("↑ ↑ ↓ ↓ ← → ← → B A")
             self.add_output("Classic! But this isn't that kind of game...")
             self.add_output("")
-            self.secret_commands_found.add("konami")
+            self._mark_secret_found("konami")
             return True
         
         elif cmd_lower in ["hack", "hack the planet"]:
             self.add_output("HACK THE PLANET!")
             self.add_output("Access granted... to more bullets.")
             self.add_output("")
-            self.secret_commands_found.add("hacker")
+            self._mark_secret_found("hacker")
             return True
         
         elif cmd_lower == "matrix":
             self.add_output("There is no spoon. Only bullets.")
             self.add_output("")
-            self.secret_commands_found.add("matrix")
+            self._mark_secret_found("matrix")
             return True
         
         elif cmd_lower == "ping":
@@ -226,12 +227,63 @@ class MainMenuState(BaseState):
             self.add_output("")
             return True
         
+        elif cmd_lower in ["rm save", "rm save.json", "rm -rf save"]:
+            self.add_output("Deleting save file...")
+            self.add_output("")
+            self.game.save_system.reset_save()
+            # Reset local secrets too
+            self.secret_commands_found = set()
+            self.add_output("Save data reset! Starting fresh.")
+            self.add_output("")
+            self._mark_secret_found("fresh_start")
+            return True
+        
         elif cmd_lower == "secret":
-            if len(self.secret_commands_found) > 0:
-                self.add_output(f"You've found {len(self.secret_commands_found)} secret command(s)!")
+            total_found = len(self.secret_commands_found)
+            if total_found > 0:
+                self.add_output(f"You've found {total_found} secret command(s)!")
                 self.add_output(f"Discovered: {', '.join(sorted(self.secret_commands_found))}")
             else:
                 self.add_output("No secrets found yet. Keep exploring!")
+            self.add_output("")
+            return True
+        
+        elif cmd_lower in ["highscores", "high", "scores"]:
+            # Show high scores
+            scores = self.game.save_system.get_high_scores(10)
+            if scores:
+                self.add_output("=== HIGH SCORES ===")
+                self.add_output("")
+                for i, entry in enumerate(scores, 1):
+                    score_val = entry["score"]
+                    time_sec = entry["time"] // 1000
+                    date_str = entry["date"][:10]  # Just the date part
+                    self.add_output(f"{i:2}. {score_val:6} pts  {time_sec:3}s  {date_str}")
+                self.add_output("")
+            else:
+                self.add_output("No high scores yet. Type 'start' to play!")
+                self.add_output("")
+            return True
+        
+        elif cmd_lower in ["stats", "statistics"]:
+            # Show statistics
+            stats = self.game.save_system.get_all_stats()
+            total_games = self.game.save_system.data["total_games_played"]
+            total_time = self.game.save_system.data["total_time_survived"] // 1000
+            exploration = self.game.save_system.get_exploration_stats()
+            
+            self.add_output("=== STATISTICS ===")
+            self.add_output("")
+            self.add_output(f"Games Played: {total_games}")
+            self.add_output(f"Total Time Survived: {total_time}s")
+            self.add_output(f"Enemies Depleted: {stats.get('enemies_depleted', 0)}")
+            closest = stats.get('closest_call', 999)
+            if closest < 999:
+                self.add_output(f"Closest Call: {closest:.2f} tiles")
+            self.add_output("")
+            self.add_output(f"Secrets Found: {len(self.secret_commands_found)}")
+            self.add_output(f"Directories Visited: {exploration['dirs_visited']}")
+            self.add_output(f"Files Read: {exploration['files_read']}")
             self.add_output("")
             return True
         
@@ -296,8 +348,11 @@ class MainMenuState(BaseState):
         
         elif cmd_lower == "pwd":
             # Print working directory
-            self.add_output(self.filesystem.get_pwd())
+            current_path = self.filesystem.get_pwd()
+            self.add_output(current_path)
             self.add_output("")
+            # Track directory visit
+            self.game.save_system.mark_directory_visited(current_path)
         
         elif cmd_lower.startswith("cd "):
             # Change directory
@@ -315,6 +370,9 @@ class MainMenuState(BaseState):
                 for line in content:
                     self.add_output(line)
                 self.add_output("")
+                # Track file read
+                current_path = self.filesystem.get_pwd()
+                self.game.save_system.mark_file_read(f"{current_path}/{filename}")
             else:
                 self.add_output(content)
                 self.add_output("")
@@ -440,9 +498,14 @@ class MainMenuState(BaseState):
                     "This is a bullet hell, not Contra!",
                     ""
                 ], delay=30)
-                self.secret_commands_found.add("konami_keys")
+                self._mark_secret_found("konami_keys")
                 # Reset sequence
                 self.konami_sequence = []
+    
+    def _mark_secret_found(self, secret_id):
+        """Mark a secret as found and save"""
+        self.secret_commands_found.add(secret_id)
+        self.game.save_system.add_secret_found(secret_id)
     
     def get_prompt(self):
         """Get the current prompt string with directory"""

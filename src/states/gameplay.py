@@ -109,6 +109,8 @@ class GameplayState(BaseState):
         # Check collisions
         if self.level.check_collisions(self.player):
             self.game_over = True
+            # Save score on game over
+            self.game.save_system.add_score(self.score, self.survival_time)
     
     def render(self):
         """Render the game"""
@@ -243,9 +245,15 @@ class GameplayState(BaseState):
             "",
             f"Final Score: {self.score}",
             f"Time Survived: {int(self.survival_time / 1000)} seconds",
-            "",
-            "Press ESC to return to menu"
+            ""
         ]
+        
+        # Check if it's a high score
+        if self.game.save_system.is_high_score(self.score):
+            messages.append("NEW HIGH SCORE!")
+            messages.append("")
+        
+        messages.append("Press ESC to return to menu")
         
         start_y = (self.renderer.char_height - len(messages)) // 2
         

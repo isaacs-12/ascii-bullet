@@ -38,7 +38,7 @@ class TerminalRenderer:
         
         # Load monospace font and get actual character metrics
         self.font = pygame.font.Font(pygame.font.match_font('courier', bold=True), cell_size)
-        self.title_font = pygame.font.Font(pygame.font.match_font('courier', bold=True), 16)
+        self.title_font = pygame.font.Font(pygame.font.match_font('courier', bold=True), 10)
         
         # Get actual character dimensions from font metrics
         # Test with a wide character to ensure proper spacing
@@ -52,7 +52,7 @@ class TerminalRenderer:
         
         # Frame settings
         self.frame_thickness = 0  # No border frame
-        self.title_bar_height = 28
+        self.title_bar_height = 20
         
         # Calculate initial window size
         self.char_width = width
@@ -192,12 +192,12 @@ class TerminalRenderer:
         pygame.draw.rect(self.screen, self.COLORS['title_bar'], title_bar_rect)
         
         title_surface = self.title_font.render("● ASCII BULLET HELL", True, self.COLORS['menu_normal'])
-        self.screen.blit(title_surface, (10, 7))
+        self.screen.blit(title_surface, (8, 5))
         
         # Add size indicator in title bar
         size_text = f"{current_char_width}x{current_char_height}"
         size_surface = self.title_font.render(size_text, True, self.COLORS['menu_normal'])
-        self.screen.blit(size_surface, (actual_width - size_surface.get_width() - 10, 7))
+        self.screen.blit(size_surface, (actual_width - size_surface.get_width() - 8, 5))
         
         # Create a separate surface for terminal content at exact calculated size
         terminal_surface = pygame.Surface((current_terminal_width, current_terminal_height))

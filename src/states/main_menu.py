@@ -38,6 +38,18 @@ class MainMenuState(BaseState):
         
         # Virtual filesystem
         self.filesystem = VirtualFileSystem()
+        
+        # Konami code tracking
+        self.konami_sequence = []
+        self.konami_code = ['up', 'up', 'down', 'down', 'left', 'right', 'left', 'right', 'b', 'a']
+        
+        # Animated typing state
+        self.typing_queue = []  # Queue of lines to type out
+        self.current_typing_line = ""  # Full line being typed
+        self.current_typing_index = 0  # Current character index
+        self.typing_timer = 0
+        self.typing_delay = 50  # ms between characters
+        self.is_typing = False
     
     def enter(self):
         """Called when entering this state"""
@@ -55,6 +67,9 @@ class MainMenuState(BaseState):
                     # Skip boot sequence on any key
                     self.complete_boot()
                     return
+                
+                # Track Konami code
+                self._track_konami_code(event)
                 
                 if event.key == pygame.K_RETURN:
                     # Execute command
@@ -115,6 +130,30 @@ class MainMenuState(BaseState):
                 else:
                     # Boot complete, show title and welcome
                     self.complete_boot()
+        
+        # Animated typing
+        if self.is_typing:
+            self.typing_timer += dt
+            if self.typing_timer >= self.typing_delay:
+                self.typing_timer = 0
+                
+                if self.current_typing_index < len(self.current_typing_line):
+                    # Type next character
+                    self.current_typing_index += 1
+                    # Update the last line in output with current progress
+                    if self.output_lines and self.output_lines[-1].startswith(">>> "):
+                        self.output_lines[-1] = ">>> " + self.current_typing_line[:self.current_typing_index]
+                else:
+                    # Finished typing current line
+                    # Replace the ">>> " prefix with final text
+                    if self.output_lines and self.output_lines[-1].startswith(">>> "):
+                        self.output_lines[-1] = self.current_typing_line
+                    
+                    # Move to next line in queue
+                    if self.typing_queue:
+                        self._start_typing_next_line()
+                    else:
+                        self.is_typing = False
     
     def complete_boot(self):
         """Complete the boot sequence and show main screen"""
@@ -364,6 +403,47 @@ class MainMenuState(BaseState):
         
         return sorted(matches)
     
+    def _track_konami_code(self, event):
+        """Track key presses for Konami code detection"""
+        key_name = None
+        
+        # Map pygame keys to our sequence names
+        if event.key == pygame.K_UP:
+            key_name = 'up'
+        elif event.key == pygame.K_DOWN:
+            key_name = 'down'
+        elif event.key == pygame.K_LEFT:
+            key_name = 'left'
+        elif event.key == pygame.K_RIGHT:
+            key_name = 'right'
+        elif event.unicode.lower() == 'b':
+            key_name = 'b'
+        elif event.unicode.lower() == 'a':
+            key_name = 'a'
+        
+        if key_name:
+            # Add to sequence
+            self.konami_sequence.append(key_name)
+            
+            # Keep only the last 10 keys (length of Konami code)
+            if len(self.konami_sequence) > 10:
+                self.konami_sequence.pop(0)
+            
+            # Check if we've completed the Konami code
+            if self.konami_sequence == self.konami_code:
+                self.add_output("")
+                # Use animated typing for dramatic effect
+                self.type_output([
+                    "...",
+                    "....",
+                    "Psh, your powers don't work here.",
+                    "This is a bullet hell, not Contra!",
+                    ""
+                ], delay=30)
+                self.secret_commands_found.add("konami_keys")
+                # Reset sequence
+                self.konami_sequence = []
+    
     def get_prompt(self):
         """Get the current prompt string with directory"""
         # Get just the last part of the path for brevity
@@ -375,12 +455,44 @@ class MainMenuState(BaseState):
         return f"[{current_dir}]> "
     
     def add_output(self, text):
-        """Add a line to the output buffer"""
+        """Add a line to the output buffer instantly"""
         self.output_lines.append(text)
         
         # Trim old lines if too many
         if len(self.output_lines) > 1000:
             self.output_lines = self.output_lines[-1000:]
+    
+    def type_output(self, text_lines, delay=50):
+        """
+        Add lines to output with animated typing effect
+        
+        Args:
+            text_lines: String or list of strings to type out
+            delay: Milliseconds between characters (default 50)
+        """
+        # Convert single string to list
+        if isinstance(text_lines, str):
+            text_lines = [text_lines]
+        
+        # Add lines to typing queue
+        self.typing_queue.extend(text_lines)
+        self.typing_delay = delay
+        
+        # Start typing if not already typing
+        if not self.is_typing:
+            self._start_typing_next_line()
+    
+    def _start_typing_next_line(self):
+        """Start typing the next line in the queue"""
+        if self.typing_queue:
+            self.current_typing_line = self.typing_queue.pop(0)
+            self.current_typing_index = 0
+            self.is_typing = True
+            self.typing_timer = 0
+            # Add placeholder line with ">>> " prefix to show it's typing
+            self.output_lines.append(">>> ")
+        else:
+            self.is_typing = False
     
     def render(self):
         """Render the terminal interface"""

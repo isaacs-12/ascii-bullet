@@ -82,6 +82,10 @@ class MainMenuState(BaseState):
                         self.history_index = -1
                         self.input_buffer = ""
                 
+                elif event.key == pygame.K_TAB:
+                    # Tab completion for cd and cat commands
+                    self._handle_tab_completion()
+                
                 elif event.key == pygame.K_ESCAPE:
                     # Quick quit
                     self.game.running = False
@@ -283,6 +287,82 @@ class MainMenuState(BaseState):
             self.add_output(f"Command not found: {command}")
             self.add_output("Type 'help' for available commands")
             self.add_output("")
+    
+    def _handle_tab_completion(self):
+        """Handle tab completion for cd and cat commands"""
+        if not self.input_buffer:
+            return
+        
+        parts = self.input_buffer.split()
+        if len(parts) == 0:
+            return
+        
+        command = parts[0].lower()
+        
+        # Only support completion for cd and cat
+        if command not in ['cd', 'cat']:
+            return
+        
+        # Get the partial path/filename being typed
+        if len(parts) == 1:
+            partial = ""
+        else:
+            partial = parts[1]
+        
+        # Get appropriate completions
+        if command == 'cd':
+            completions = self._get_directory_completions(partial)
+        else:  # cat
+            completions = self._get_file_completions(partial)
+        
+        if not completions:
+            return
+        
+        # If only one completion, auto-complete it
+        if len(completions) == 1:
+            if len(parts) == 1:
+                self.input_buffer = f"{command} {completions[0]}"
+            else:
+                self.input_buffer = f"{command} {completions[0]}"
+        else:
+            # Multiple completions - show them
+            self.add_output("")
+            self.add_output("  ".join(completions))
+            self.add_output("")
+    
+    def _get_directory_completions(self, partial):
+        """Get directory name completions"""
+        current_dir = self.filesystem.get_current_directory()
+        
+        if 'dirs' not in current_dir:
+            return []
+        
+        # Get all directories that start with the partial string
+        matches = []
+        for dir_name in current_dir['dirs'].keys():
+            if dir_name.startswith(partial):
+                matches.append(dir_name)
+        
+        # Also include .. if it starts with partial
+        if "..".startswith(partial) and len(self.filesystem.current_path) > 1:
+            matches.append("..")
+        
+        return sorted(matches)
+    
+    def _get_file_completions(self, partial):
+        """Get file name completions"""
+        current_dir = self.filesystem.get_current_directory()
+        
+        if 'files' not in current_dir:
+            return []
+        
+        # Get all files that start with the partial string
+        matches = []
+        for file_name in current_dir['files'].keys():
+            if file_name.startswith(partial):
+                matches.append(file_name)
+        
+        return sorted(matches)
     
     def get_prompt(self):
         """Get the current prompt string with directory"""

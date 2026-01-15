@@ -109,6 +109,7 @@ There are hidden commands and responses throughout the terminal! The game includ
 - Use `cd ..` to go back to the parent directory
 - Use `pwd` to see where you are
 - Use `cat <filename>` to read files
+- **Press TAB** after typing `cd` or `cat` for auto-completion!
 
 **Other easter eggs to try:**
 - Common terminal commands

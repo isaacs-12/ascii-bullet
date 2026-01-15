@@ -49,12 +49,15 @@ def get_help_text():
         "",
         "Filesystem commands:",
         "  ls / dir    - List directory contents",
-        "  cd <path>   - Change directory",
+        "  cd <path>   - Change directory (TAB to complete)",
         "  cd ..       - Go to parent directory",
         "  pwd         - Print working directory",
-        "  cat <file>  - Display file contents",
+        "  cat <file>  - Display file contents (TAB to complete)",
         "",
-        "Hint: Explore the filesystem for secrets!",
+        "Tips:",
+        "  - Press TAB after 'cd' or 'cat' for auto-completion",
+        "  - UP/DOWN arrows to recall command history",
+        "  - Explore the filesystem for secrets!",
         "",
     ]
 

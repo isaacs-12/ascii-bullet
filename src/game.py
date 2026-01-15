@@ -33,12 +33,23 @@ class Game:
             new_state: The new state to switch to
             call_enter: Whether to call enter() on the new state (default True)
         """
-        if self.current_state:
-            self.current_state.exit()
-        
-        self.current_state = new_state
-        if call_enter:
-            self.current_state.enter()
+        print(f"[DEBUG] Game.change_state() called, new_state={type(new_state).__name__}, call_enter={call_enter}")
+        try:
+            if self.current_state:
+                print(f"[DEBUG] Exiting current state: {type(self.current_state).__name__}")
+                self.current_state.exit()
+            
+            print(f"[DEBUG] Setting new state")
+            self.current_state = new_state
+            if call_enter:
+                print(f"[DEBUG] Calling enter() on new state")
+                self.current_state.enter()
+            print(f"[DEBUG] State change completed successfully")
+        except Exception as e:
+            print(f"[ERROR] Exception in change_state: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
     
     def handle_events(self):
         """Handle pygame events"""
@@ -66,8 +77,11 @@ class Game:
     
     def render(self):
         """Render the current game state"""
+        print(f"[DEBUG] Game.render() called")
         if self.current_state:
+            print(f"[DEBUG] Calling render on state: {type(self.current_state).__name__}")
             self.current_state.render()
+            print(f"[DEBUG] State render completed")
     
     def run(self):
         """Main game loop"""

@@ -88,6 +88,7 @@ ascii-bullet/
 │   └── states/              # Game states
 │       ├── base_state.py    # Base state class
 │       ├── main_menu.py     # Terminal command interface
+│       ├── editor.py        # Text editor (vim-like)
 │       └── gameplay.py      # Active gameplay state
 ```
 
@@ -122,7 +123,11 @@ The game features a **fully mutable filesystem** that you'll need to navigate an
 - `pwd` - Print current directory
 - `cat <file>` - Read file contents
 
-**File operations:**
+**File editing:**
+- `vim <file>` or `vi <file>` or `edit <file>` - Open text editor
+  - **Normal mode**: Arrow keys to navigate, `i` for insert mode, `:` for commands
+  - **Insert mode**: Type to edit, ESC to return to normal mode
+  - **Commands**: `:w` save, `:q` quit, `:wq` save and quit, `:q!` force quit
 - `touch <file>` - Create empty file
 - `echo text > file` - Write to file (overwrites)
 - `echo text >> file` - Append to file
@@ -248,6 +253,7 @@ The game features a **bullet hell** dodging mechanic where you must survive wave
 - [x] Statistics tracking
 - [x] Mutable filesystem with file operations
 - [x] Python script execution (sandboxed)
+- [x] Text editor (vim-like)
 - [ ] More enemy types and patterns
 - [ ] Multiple levels with progression
 - [ ] Power-ups and abilities

@@ -7,6 +7,7 @@ from src.ascii_art import (
     get_help_text, get_about_text
 )
 from src.filesystem import VirtualFileSystem
+from src.text_editor import TextEditor
 
 
 class MainMenuState(BaseState):
@@ -52,6 +53,11 @@ class MainMenuState(BaseState):
         self.typing_timer = 0
         self.typing_delay = 50  # ms between characters
         self.is_typing = False
+        
+        # Text editor state
+        self.editor = None
+        self.editor_active = False
+        self.editor_filename = None
     
     def enter(self):
         """Called when entering this state"""
@@ -65,6 +71,31 @@ class MainMenuState(BaseState):
         """Handle keyboard input for terminal"""
         for event in events:
             if event.type == pygame.KEYDOWN:
+                # Handle text editor if active
+                if self.editor_active and self.editor:
+                    self.editor.handle_event(event)
+                    
+                    # Check if editor wants to exit
+                    if self.editor.should_exit:
+                        self.editor_active = False
+                        self.add_output(f"Exited editor: {self.editor_filename}")
+                        self.add_output("")
+                        self.editor = None
+                        self.editor_filename = None
+                    
+                    # Check if editor wants to save
+                    elif self.editor.should_save:
+                        content = self.editor.get_content()
+                        success, error = self.filesystem.create_file(
+                            self.editor_filename, 
+                            content
+                        )
+                        if success:
+                            self._save_filesystem()
+                        self.editor.should_save = False
+                    
+                    continue
+                
                 if self.booting:
                     # Skip boot sequence on any key
                     self.complete_boot()
@@ -438,6 +469,23 @@ class MainMenuState(BaseState):
             else:
                 self.add_output("Usage: mv <source> <destination>")
             self.add_output("")
+        
+        elif cmd_lower.startswith("vim ") or cmd_lower.startswith("vi ") or cmd_lower.startswith("edit "):
+            # Open text editor
+            parts = command.split(None, 1)
+            if len(parts) < 2:
+                self.add_output("Usage: vim <filename>  or  vi <filename>  or  edit <filename>")
+                self.add_output("")
+            else:
+                filename = parts[1].strip()
+                try:
+                    # Switch to editor state
+                    from src.states.editor import EditorState
+                    editor = EditorState(self.game, self.filesystem, filename, self)
+                    self.game.change_state(editor)
+                except Exception as e:
+                    self.add_output(f"Error opening editor: {e}")
+                    self.add_output("")
         
         elif cmd_lower.startswith("python ") or cmd_lower.startswith("run "):
             # Execute Python script

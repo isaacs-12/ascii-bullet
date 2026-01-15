@@ -2,6 +2,9 @@
 
 A retro-styled bullet hell game with a terminal aesthetic, built in Python using pygame.
 
+<img width="672" height="760" alt="Screenshot 2026-01-14 at 10 38 47 PM" src="https://github.com/user-attachments/assets/aca38a5b-2618-45d8-a1a9-9e557de86d07" />
+
+
 ## Features
 
 - **Terminal-style rendering** with ASCII graphics and custom frame

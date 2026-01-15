@@ -202,12 +202,13 @@ class MainMenuState(BaseState):
         for line in get_welcome_text():
             self.output_lines.append(line)
 
-    def _easter_egg_commands(self, cmd_lower):
+    def _easter_egg_commands(self, cmd_lower, command):
         """
         Handle easter egg commands
         
         Args:
             cmd_lower: The lowercase command string
+            command: The original command string
             
         Returns:
             True if command was handled, False otherwise
@@ -257,6 +258,115 @@ class MainMenuState(BaseState):
         
         elif cmd_lower == "ping":
             self.add_output("PONG! The bullets hit back.")
+            self.add_output("")
+            return True
+        
+        elif cmd_lower == "brew":
+            # Homebrew-style help
+            self.add_output("Example usage:")
+            self.add_output("  brew search TEXT|/REGEX/")
+            self.add_output("  brew info [FORMULA...]")
+            self.add_output("  brew install FORMULA...")
+            self.add_output("  brew update")
+            self.add_output("  brew upgrade [FORMULA...]")
+            self.add_output("  brew uninstall FORMULA...")
+            self.add_output("  brew list [FORMULA...]")
+            self.add_output("")
+            self.add_output("Troubleshooting:")
+            self.add_output("  brew config")
+            self.add_output("  brew doctor")
+            self.add_output("  brew install --verbose --debug FORMULA")
+            self.add_output("")
+            self.add_output("Further help:")
+            self.add_output("  brew commands")
+            self.add_output("  brew help [COMMAND]")
+            self.add_output("")
+            return True
+        
+        elif cmd_lower == "brew update":
+            # Simulate brew update
+            self.type_output([
+                "==> Updating Homebrew...",
+                "==> Downloading ghcr.io/v2/blthll/core/portable-tools/blobs/sha256:a7f3c9...",
+                "######################################################################## 100.0%",
+                "==> Pouring portable-tools-1.0.0.arm64_ventura.bottle.tar.gz",
+                "",
+                "==> Homebrew collects anonymous analytics.",
+                "Read the analytics documentation (and how to opt-out) here:",
+                "  https://docs.brew.sh/Analytics",
+                "",
+                "Updated 1 tap (blthll/core).",
+                "==> New Formulae",
+                "blthll-extras        power-tools         secret-scanner",
+                "debug-mode           radar-boost         time-warp",
+                "",
+                "You have packages available to install.",
+                "You can install them with: brew install <formula>",
+                ""
+            ], delay=30)
+            self._mark_secret_found("brew_update")
+            return True
+        
+        elif cmd_lower.startswith("brew install "):
+            # Extract package name
+            package = command[13:].strip()
+            if not package:
+                self.add_output("Error: This command requires a formula argument")
+                self.add_output("")
+                return True
+            
+            # Simulate installation
+            self.type_output([
+                f"==> Downloading {package}...",
+                "######################################################################## 100.0%",
+                f"==> Installing {package}",
+                f"==> Pouring {package}--1.0.0.arm64_ventura.bottle.tar.gz",
+            ], delay=30)
+            
+            # Check if this is a recognized package and enable feature
+            installed = False
+            if package == "debug-mode":
+                self.add_output(f"🍺  {package} 1.0.0 is installed!")
+                self.add_output("")
+                self.add_output("Debug mode has been enabled!")
+                self.add_output("New command available: debug")
+                self._mark_secret_found("brew_debug_mode")
+                installed = True
+            elif package == "time-warp":
+                self.add_output(f"🍺  {package} 1.0.0 is installed!")
+                self.add_output("")
+                self.add_output("Time manipulation tools installed!")
+                self._mark_secret_found("brew_time_warp")
+                installed = True
+            elif package == "power-tools":
+                self.add_output(f"🍺  {package} 1.0.0 is installed!")
+                self.add_output("")
+                self.add_output("Advanced system utilities installed!")
+                self._mark_secret_found("brew_power_tools")
+                installed = True
+            elif package == "radar-boost":
+                self.add_output(f"🍺  {package} 1.0.0 is installed!")
+                self.add_output("")
+                self.add_output("Proximity radar enhancements installed!")
+                self._mark_secret_found("brew_radar_boost")
+                installed = True
+            elif package == "secret-scanner":
+                self.add_output(f"🍺  {package} 1.0.0 is installed!")
+                self.add_output("")
+                self.add_output("Hidden file scanner installed!")
+                self.add_output("Hint: Try scanning for hidden files in the filesystem...")
+                self._mark_secret_found("brew_secret_scanner")
+                installed = True
+            elif package == "blthll-extras":
+                self.add_output(f"🍺  {package} 1.0.0 is installed!")
+                self.add_output("")
+                self.add_output("Extra game features unlocked!")
+                self._mark_secret_found("brew_blthll_extras")
+                installed = True
+            else:
+                self.add_output(f"Error: No available formula with the name \"{package}\"")
+                self.add_output("Try: brew update")
+            
             self.add_output("")
             return True
         
@@ -558,7 +668,7 @@ class MainMenuState(BaseState):
                 self.add_output("Invalid syntax. Use: echo text > file  or  echo text >> file")
                 self.add_output("")
         
-        elif self._easter_egg_commands(cmd_lower=cmd_lower):
+        elif self._easter_egg_commands(cmd_lower=cmd_lower, command=command):
             return
         
         else:

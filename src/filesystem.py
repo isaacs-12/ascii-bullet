@@ -28,6 +28,7 @@ class VirtualFileSystem:
         self.user_created_files = {}  # path -> content
         self.user_created_dirs = []   # list of paths
         self.user_modified_files = {}  # path -> content
+        self.user_deleted_files = set()  # paths of default files that have been deleted/moved
         
         # Restore saved state if provided
         if saved_state:
@@ -269,12 +270,17 @@ class VirtualFileSystem:
     
     def file_exists(self, filename):
         """Check if a file exists in the current directory"""
+        full_path = self.get_pwd() + '/' + filename
+        
+        # Check if file has been deleted
+        if full_path in self.user_deleted_files:
+            return False
+        
         current_dir = self.get_current_directory()
         if 'files' in current_dir and filename in current_dir['files']:
             return True
         
         # Check user-created files
-        full_path = self.get_pwd() + '/' + filename
         return full_path in self.user_created_files or full_path in self.user_modified_files
     
     # === Mutable Filesystem Operations ===
@@ -377,7 +383,7 @@ class VirtualFileSystem:
         """
         full_path = self.get_pwd() + '/' + filename
         
-        # Can only delete user-created files
+        # Delete user-created files
         if full_path in self.user_created_files:
             del self.user_created_files[full_path]
             return (True, None)
@@ -385,7 +391,9 @@ class VirtualFileSystem:
             del self.user_modified_files[full_path]
             return (True, None)
         elif self.file_exists(filename):
-            return (False, "Cannot delete default system files")
+            # Mark default file as deleted (can be undone with rm save)
+            self.user_deleted_files.add(full_path)
+            return (True, None)
         else:
             return (False, f"File '{filename}' not found")
     
@@ -433,6 +441,78 @@ class VirtualFileSystem:
         self.user_created_dirs.remove(full_path)
         return (True, None)
     
+    def move_file(self, source, destination):
+        """
+        Move or rename a file (including default system files)
+        
+        Args:
+            source: Source filename (in current directory)
+            destination: Destination path (can include directory path or just filename)
+            
+        Returns:
+            tuple: (success, error_message or None)
+        """
+        current_pwd = self.get_pwd()
+        source_full = current_pwd + '/' + source
+        
+        # Check if source exists
+        if not self.file_exists(source):
+            return (False, f"File '{source}' not found")
+        
+        # Read source file content
+        success, content = self.read_file(source)
+        if not success:
+            return (False, f"Cannot read source file: {source}")
+        
+        # Compute destination full path
+        if '/' in destination:
+            # Destination includes directory path
+            dest_parts = destination.rsplit('/', 1)
+            dest_dir = dest_parts[0]
+            dest_filename = dest_parts[1]
+            
+            # Validate destination directory exists
+            old_path = self.current_path[:]
+            success, error = self.change_directory(dest_dir)
+            if not success:
+                self.current_path = old_path
+                return (False, f"Destination directory not found: {dest_dir}")
+            
+            dest_full = self.get_pwd() + '/' + dest_filename
+            self.current_path = old_path
+            
+            # Check if destination file already exists
+            old_path = self.current_path[:]
+            self.change_directory(dest_dir)
+            dest_exists = self.file_exists(dest_filename)
+            self.current_path = old_path
+            
+            if dest_exists:
+                return (False, f"Destination file already exists: {destination}")
+        else:
+            # Destination is in current directory (rename)
+            dest_full = current_pwd + '/' + destination
+            if self.file_exists(destination):
+                return (False, f"Destination file already exists: {destination}")
+        
+        # Determine if source is a default file
+        is_default = (source_full not in self.user_created_files and 
+                     source_full not in self.user_modified_files)
+        
+        # Perform the move
+        if source_full in self.user_created_files:
+            del self.user_created_files[source_full]
+        elif source_full in self.user_modified_files:
+            del self.user_modified_files[source_full]
+        elif is_default:
+            # Mark default file as deleted from source location
+            self.user_deleted_files.add(source_full)
+        
+        # Create file at destination
+        self.user_created_files[dest_full] = content
+        
+        return (True, None)
+    
     def list_directory(self):
         """List contents of current directory (including user-created)"""
         current_dir = self.get_current_directory()
@@ -454,10 +534,12 @@ class VirtualFileSystem:
                     if f"{dir_name}/" not in contents:
                         contents.append(f"{dir_name}/")
         
-        # Add default files
+        # Add default files (excluding deleted ones)
         if 'files' in current_dir:
             for file_name in sorted(current_dir['files'].keys()):
-                contents.append(file_name)
+                full_path = current_path + '/' + file_name
+                if full_path not in self.user_deleted_files:
+                    contents.append(file_name)
         
         # Add user-created files in this directory
         for file_path in sorted(self.user_created_files.keys()):
@@ -482,6 +564,10 @@ class VirtualFileSystem:
     def read_file(self, filename):
         """Read a file (checks user files first, then defaults)"""
         full_path = self.get_pwd() + '/' + filename
+        
+        # Check if file has been deleted
+        if full_path in self.user_deleted_files:
+            return (False, f"File '{filename}' not found")
         
         # Check user-modified files first
         if full_path in self.user_modified_files:
@@ -519,7 +605,8 @@ class VirtualFileSystem:
             'current_path': self.current_path,
             'user_created_files': self.user_created_files,
             'user_created_dirs': self.user_created_dirs,
-            'user_modified_files': self.user_modified_files
+            'user_modified_files': self.user_modified_files,
+            'user_deleted_files': list(self.user_deleted_files)
         }
     
     def _restore_state(self, state):
@@ -532,6 +619,8 @@ class VirtualFileSystem:
             self.user_created_dirs = state['user_created_dirs']
         if 'user_modified_files' in state:
             self.user_modified_files = state['user_modified_files']
+        if 'user_deleted_files' in state:
+            self.user_deleted_files = set(state['user_deleted_files'])
     
     def reset_to_defaults(self):
         """Reset filesystem to default state"""
@@ -539,4 +628,5 @@ class VirtualFileSystem:
         self.user_created_files = {}
         self.user_created_dirs = []
         self.user_modified_files = {}
+        self.user_deleted_files = set()
 

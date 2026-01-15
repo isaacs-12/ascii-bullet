@@ -424,6 +424,21 @@ class MainMenuState(BaseState):
                 self.add_output(error)
             self.add_output("")
         
+        elif cmd_lower.startswith("mv "):
+            # Move/rename file
+            args = command[3:].strip().split()
+            if len(args) == 2:
+                source, destination = args
+                success, error = self.filesystem.move_file(source, destination)
+                if success:
+                    self.add_output(f"Moved: {source} -> {destination}")
+                    self._save_filesystem()
+                else:
+                    self.add_output(error)
+            else:
+                self.add_output("Usage: mv <source> <destination>")
+            self.add_output("")
+        
         elif " > " in command or " >> " in command:
             # Write to file (echo or other content)
             if " >> " in command:

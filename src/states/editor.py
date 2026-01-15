@@ -19,61 +19,38 @@ class EditorState(BaseState):
             filename: Name of file to edit
             previous_state: State to return to when done
         """
-        print(f"[DEBUG] EditorState.__init__ called with filename: {filename}")
-        try:
-            super().__init__(game)
-            print(f"[DEBUG] super().__init__ successful")
-            self.filesystem = filesystem
-            self.filename = filename
-            self.previous_state = previous_state
-            
-            # Editor state
-            self.lines = []
-            self.current_line = 0
-            self.cursor_pos = 0
-            self.mode = "normal"  # "normal", "insert", or "command"
-            self.command_buffer = ""
-            self.message = ""
-            self.is_modified = False
-            print(f"[DEBUG] Editor state variables initialized")
-            
-            # Load file if it exists
-            print(f"[DEBUG] Attempting to read file: {filename}")
-            success, content = filesystem.read_file(filename)
-            print(f"[DEBUG] File read result: success={success}, content type={type(content)}")
-            if success:
-                if isinstance(content, list):
-                    self.lines = [str(line) for line in content]
-                else:
-                    self.lines = [str(content)]
-                print(f"[DEBUG] Loaded {len(self.lines)} lines")
+        super().__init__(game)
+        self.filesystem = filesystem
+        self.filename = filename
+        self.previous_state = previous_state
+        
+        # Editor state
+        self.lines = []
+        self.current_line = 0
+        self.cursor_pos = 0
+        self.mode = "normal"  # "normal", "insert", or "command"
+        self.command_buffer = ""
+        self.message = ""
+        self.is_modified = False
+        
+        # Load file if it exists
+        success, content = filesystem.read_file(filename)
+        if success:
+            if isinstance(content, list):
+                self.lines = [str(line) for line in content]
             else:
-                # New file
-                self.lines = [""]
-                print(f"[DEBUG] New file, starting with empty line")
-            
-            # Ensure at least one line
-            if not self.lines:
-                self.lines = [""]
-                
-            print(f"[DEBUG] EditorState.__init__ completed successfully")
-        except Exception as e:
-            print(f"[ERROR] Exception in EditorState.__init__: {e}")
-            import traceback
-            traceback.print_exc()
-            raise
+                self.lines = [str(content)]
+        else:
+            # New file
+            self.lines = [""]
+        
+        # Ensure at least one line
+        if not self.lines:
+            self.lines = [""]
     
     def enter(self):
         """Called when entering this state"""
-        print(f"[DEBUG] EditorState.enter() called")
-        try:
-            self.message = f"Editing: {self.filename} | ESC=normal, i=insert, :w=save, :q=quit, :wq=save&quit"
-            print(f"[DEBUG] EditorState.enter() completed")
-        except Exception as e:
-            print(f"[ERROR] Exception in EditorState.enter(): {e}")
-            import traceback
-            traceback.print_exc()
-            raise
+        self.message = f"Editing: {self.filename} | ESC=normal, i=insert, :w=save, :q=quit, :wq=save&quit"
     
     def exit(self):
         """Called when exiting this state"""
@@ -274,71 +251,55 @@ class EditorState(BaseState):
     
     def update(self, dt):
         """Update editor state"""
-        # print(f"[DEBUG] EditorState.update() called with dt={dt}")  # Too verbose
         pass
     
     def render(self):
         """Render the editor"""
-        print(f"[DEBUG] EditorState.render() called")
-        try:
-            print(f"[DEBUG] Clearing renderer...")
-            self.renderer.clear()
-            
-            print(f"[DEBUG] Calculating visible area, char_height={self.renderer.char_height}")
-            # Calculate visible area
-            max_lines = self.renderer.char_height - 3  # Leave room for status and message
-            start_line = max(0, self.current_line - max_lines // 2)
-            end_line = min(len(self.lines), start_line + max_lines)
-            print(f"[DEBUG] Visible area: lines {start_line} to {end_line}")
-        except Exception as e:
-            print(f"[ERROR] Error in editor render setup: {e}")
-            import traceback
-            traceback.print_exc()
-            return
+        self.renderer.clear()
         
-        try:
-            # Draw lines with line numbers
-            y = 0
-            for i in range(start_line, end_line):
-                line_num = str(i + 1).rjust(4)
-                is_current = (i == self.current_line)
-                
-                # Line number
-                self.renderer.write(0, y, line_num, (0, 200, 200) if is_current else (100, 100, 100))
-                
-                # Line content
-                line_text = self.lines[i]
-                self.renderer.write(5, y, line_text[:self.renderer.char_width - 6], (255, 255, 255))
-                
-                # Show cursor on current line
-                if is_current and self.mode == "insert":
-                    cursor_x = 5 + min(self.cursor_pos, len(line_text))
-                    if cursor_x < self.renderer.char_width:
-                        self.renderer.write(cursor_x, y, "_", (255, 255, 0))
-                elif is_current and self.mode == "normal":
-                    cursor_x = 5 + min(self.cursor_pos, len(line_text))
-                    if cursor_x < self.renderer.char_width:
-                        # Show cursor as highlighted character in normal mode
-                        char = line_text[self.cursor_pos] if self.cursor_pos < len(line_text) else " "
-                        self.renderer.write(cursor_x, y, f"[{char}]", (255, 255, 0))
-                
-                y += 1
+        # Calculate visible area
+        max_lines = self.renderer.char_height - 3  # Leave room for status and message
+        start_line = max(0, self.current_line - max_lines // 2)
+        end_line = min(len(self.lines), start_line + max_lines)
+        
+        # Draw lines with line numbers
+        y = 0
+        for i in range(start_line, end_line):
+            line_num = str(i + 1).rjust(4)
+            is_current = (i == self.current_line)
             
-            # Status line
-            status_y = self.renderer.char_height - 2
-            mode_text = f"-- {self.mode.upper()} --" if self.mode != "normal" else ""
-            file_info = f"{self.filename} [{'modified' if self.is_modified else 'saved'}] {len(self.lines)} lines"
-            self.renderer.write(0, status_y, mode_text, (255, 255, 0))
-            if self.renderer.char_width - len(file_info) - 1 > 0:
-                self.renderer.write(self.renderer.char_width - len(file_info) - 1, status_y, file_info, (150, 150, 150))
+            # Line number
+            self.renderer.write(0, y, line_num, (0, 200, 200) if is_current else (100, 100, 100))
             
-            # Message line
-            msg_y = self.renderer.char_height - 1
-            self.renderer.write(0, msg_y, self.message[:self.renderer.char_width], (200, 200, 200))
+            # Line content
+            line_text = self.lines[i]
+            self.renderer.write(5, y, line_text[:self.renderer.char_width - 6], (255, 255, 255))
             
-            self.renderer.render()
-        except Exception as e:
-            print(f"Error rendering editor: {e}")
-            import traceback
-            traceback.print_exc()
+            # Show cursor on current line
+            if is_current and self.mode == "insert":
+                cursor_x = 5 + min(self.cursor_pos, len(line_text))
+                if cursor_x < self.renderer.char_width:
+                    self.renderer.write(cursor_x, y, "_", (255, 255, 0))
+            elif is_current and self.mode == "normal":
+                cursor_x = 5 + min(self.cursor_pos, len(line_text))
+                if cursor_x < self.renderer.char_width:
+                    # Show cursor as highlighted character in normal mode
+                    char = line_text[self.cursor_pos] if self.cursor_pos < len(line_text) else " "
+                    self.renderer.write(cursor_x, y, f"[{char}]", (255, 255, 0))
+            
+            y += 1
+        
+        # Status line
+        status_y = self.renderer.char_height - 2
+        mode_text = f"-- {self.mode.upper()} --" if self.mode != "normal" else ""
+        file_info = f"{self.filename} [{'modified' if self.is_modified else 'saved'}] {len(self.lines)} lines"
+        self.renderer.write(0, status_y, mode_text, (255, 255, 0))
+        if self.renderer.char_width - len(file_info) - 1 > 0:
+            self.renderer.write(self.renderer.char_width - len(file_info) - 1, status_y, file_info, (150, 150, 150))
+        
+        # Message line
+        msg_y = self.renderer.char_height - 1
+        self.renderer.write(0, msg_y, self.message[:self.renderer.char_width], (200, 200, 200))
+        
+        self.renderer.render()
 

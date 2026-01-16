@@ -73,7 +73,7 @@ class SaveSystem:
             # Settings
             "settings": {
                 "terminal_width": 80,
-                "terminal_height": 50,
+                "terminal_height": 75,
                 "font_size": 12,
             },
             

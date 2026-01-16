@@ -485,10 +485,16 @@ class SetCard:
                     ]
     
     def get_card_width(self):
+        """Get card width from actual rendered art"""
+        art, _ = self.get_ascii_art()
+        if art:
+            return len(art[0])  # Width is length of first line
         return 13
     
     def get_card_height(self):
-        return 13
+        """Get card height from actual rendered art"""
+        art, _ = self.get_ascii_art()
+        return len(art)  # Height is number of lines
     
     def get_card_height(self):
         return 7
@@ -581,7 +587,15 @@ class SetGameState(BaseState):
         # Layout: 3 rows, 4 columns (or more if needed)
         self.cards_per_row = 4
         self.card_spacing_x = 18  # Increased to prevent overlap
-        self.card_spacing_y = 14
+        
+        # Calculate spacing based on actual card size from board (after cards are dealt)
+        if self.board:
+            art, _ = self.board[0].get_ascii_art()
+            actual_height = len(art)
+            # Spacing should equal card height to prevent overlap
+            self.card_spacing_y = actual_height
+        else:
+            self.card_spacing_y = 14  # Default fallback
         self.start_x = 1
         self.start_y = 2
     
@@ -616,20 +630,23 @@ class SetGameState(BaseState):
         click_x = pos[0] // char_width
         click_y = pos[1] // char_height
         
-        # Find which card was clicked
-        for i, card in enumerate(self.board):
+        # Find which card was clicked - check in reverse order so topmost cards are checked first
+        for i in range(len(self.board) - 1, -1, -1):
+            card = self.board[i]
             row = i // self.cards_per_row
             col = i % self.cards_per_row
             
             card_x = self.start_x + col * self.card_spacing_x
             card_y = self.start_y + row * self.card_spacing_y
             
-            # Check if click is within card bounds (full card area)
-            card_width = card.get_card_width()
-            card_height = card.get_card_height()
+            # Get actual card dimensions from rendered art
+            art, _ = card.get_ascii_art()
+            card_width = len(art[0]) if art else 13
+            card_height = len(art)
             
-            if (card_x <= click_x < card_x + card_width and
-                card_y <= click_y < card_y + card_height):
+            # Use inclusive bounds on both ends to make the entire card clickable
+            if (card_x <= click_x <= card_x + card_width - 1 and
+                card_y <= click_y <= card_y + card_height - 1):
                 
                 # Toggle selection
                 if i in self.selected_cards:
@@ -772,15 +789,19 @@ class SetGameState(BaseState):
             
             art, color = card.get_ascii_art()
             
+            # Get actual dimensions from the art
+            card_width = len(art[0]) if art else 13
+            card_height = len(art)
+            
             # Highlight if selected
             if card.selected:
-                # Draw selection box
-                for dy in range(card.get_card_height()):
+                # Draw selection box using actual art dimensions
+                for dy in range(card_height):
                     self.renderer.write(x - 1, y + dy, "|", (255, 255, 0))
-                    self.renderer.write(x + card.get_card_width(), y + dy, "|", (255, 255, 0))
-                for dx in range(card.get_card_width() + 2):
+                    self.renderer.write(x + card_width, y + dy, "|", (255, 255, 0))
+                for dx in range(card_width + 2):
                     self.renderer.write(x - 1 + dx, y - 1, "-", (255, 255, 0))
-                    self.renderer.write(x - 1 + dx, y + card.get_card_height(), "-", (255, 255, 0))
+                    self.renderer.write(x - 1 + dx, y + card_height, "-", (255, 255, 0))
             
             # Draw card
             for line_idx, line in enumerate(art):

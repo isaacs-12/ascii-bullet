@@ -826,6 +826,13 @@ class MainMenuState(BaseState):
                 self.add_output("start: 'spacebullets' - command not found")
                 self.add_output("")
         
+        elif cmd_lower == "start set":
+            # Launch Set card game
+            from src.states.set_game import SetGameState
+            set_state = SetGameState(self.game, self)
+            self.game.change_state(set_state)
+            self._mark_secret_found("set_player")
+        
         elif cmd_lower in ["top", "htop"]:
             # Interactive process viewer
             from src.states.top_viewer import TopViewerState

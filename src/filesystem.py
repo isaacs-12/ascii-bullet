@@ -119,14 +119,12 @@ class VirtualFileSystem:
                                                         "Git gud at dodging bullets instead."
                                                     ],
                                                     'developer_notes.txt': [
-                                                        "TODO: Make bullets less impossible",
-                                                        "TODO: Add easy mode (nah)",
-                                                        "TODO: Increase bullet speed (yes!)",
-                                                        "TODO: Add more particle effects"
+                                                        "TODO: Add more particle effects",
+                                                        "",
+                                                        "NOTICE: System running slow lately -- figure out why..."
                                                     ]
                                                 }
-                                            }
-                                        },
+                                            },
                                         'files': {
                                             'bullets.dat': [
                                                 "=== BULLET DATA ===",
@@ -167,14 +165,27 @@ class VirtualFileSystem:
                                         "You are a pilot trying to survive.",
                                         "Good luck. You'll need it.",
                                         "",
-                                        "Hint: Try exploring with 'ls' and 'cd'!"
+                                        "Hints:",
+                                        "- Try exploring with 'ls' and 'cd'",
+                                        "- Type 'help' to see available commands",
+                                        "- Check 'data/secret/' for hidden files",
+                                        "- Use 'top' to monitor system health"
                                     ],
                                     'manual.txt': [
                                         "SURVIVAL MANUAL",
                                         "===============",
                                         "Step 1: Don't get hit",
                                         "Step 2: See step 1",
-                                        "Step 3: There is no step 3"
+                                        "Step 3: There is no step 3",
+                                        "",
+                                        "SYSTEM COMMANDS",
+                                        "===============",
+                                        "top - Interactive process monitor (q to quit)",
+                                        "ps - Static process list",
+                                        "kill <pid> - Terminate a process by PID",
+                                        "",
+                                        "Tip: Watch for processes with high CPU usage.",
+                                        "Something might be draining system resources..."
                                     ],
                                     'hello_world.py': [
                                         "# Simple test script",
@@ -221,6 +232,7 @@ class VirtualFileSystem:
                 'files': {}
             }
         }
+    }
     
     def get_current_directory(self):
         """Get the current directory object"""

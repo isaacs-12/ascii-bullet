@@ -42,6 +42,10 @@ class MainMenuState(BaseState):
         saved_fs_state = game.save_system.get_filesystem_state()
         self.filesystem = VirtualFileSystem(saved_state=saved_fs_state)
         
+        # Process manager
+        from src.process_manager import ProcessManager
+        self.process_manager = ProcessManager()
+        
         # Konami code tracking
         self.konami_sequence = []
         self.konami_code = ['up', 'up', 'down', 'down', 'left', 'right', 'left', 'right', 'b', 'a']
@@ -707,7 +711,6 @@ class MainMenuState(BaseState):
             # Open emacs editor (requires brew install first)
             if not self.game.save_system.is_package_installed("emacs"):
                 self.add_output("emacs: command not found")
-                self.add_output("Hint: Try 'brew update' and 'brew install emacs'")
                 self.add_output("")
             else:
                 parts = command.split(None, 1)
@@ -748,6 +751,9 @@ class MainMenuState(BaseState):
                         self.add_output(f"Executing {filename}...")
                         self.add_output("")
                         
+                        # Add process for the script
+                        pid = self.process_manager.add_process(f"python {filename}", cpu_usage=2.5, mem_usage=5.0)
+                        
                         # Import and use script executor
                         from src.script_executor import ScriptExecutor
                         executor = ScriptExecutor()
@@ -758,6 +764,9 @@ class MainMenuState(BaseState):
                             self.filesystem, 
                             self.add_output
                         )
+                        
+                        # Remove process after execution
+                        self.process_manager.remove_process(pid)
                         
                         if not exec_success:
                             self.add_output("")
@@ -805,6 +814,27 @@ class MainMenuState(BaseState):
             # sudo with no arguments
             self.add_output("usage: sudo <command>")
             self.add_output("")
+        
+        elif cmd_lower in ["top", "htop"]:
+            # Interactive process viewer
+            from src.states.top_viewer import TopViewerState
+            top_state = TopViewerState(self.game, self.process_manager, self)
+            self.game.change_state(top_state)
+            self._mark_secret_found("process_viewer")
+        
+        elif cmd_lower == "ps":
+            # Static process list
+            self._show_processes()
+        
+        elif cmd_lower.startswith("kill "):
+            # Kill a process
+            try:
+                pid_str = command[5:].strip()
+                pid = int(pid_str)
+                self._kill_process(pid)
+            except ValueError:
+                self.add_output(f"kill: invalid process id: {command[5:].strip()}")
+                self.add_output("")
         
         elif self._easter_egg_commands(cmd_lower=cmd_lower, command=command):
             return
@@ -1018,6 +1048,71 @@ class MainMenuState(BaseState):
         finally:
             # Always restore original user
             self.filesystem.set_user(original_user)
+    
+    def _show_processes(self):
+        """Display static process list (ps command)"""
+        # Update CPU usage for some variation
+        self.process_manager.update_cpu_usage()
+        
+        processes = self.process_manager.get_processes()
+        
+        # Column headers
+        header = f"{'PID':<8} {'COMMAND':<20} {'%CPU':<8} {'MEM':<10} {'USER':<8} {'TIME':<10}"
+        self.add_output(header)
+        
+        # Show all processes
+        for proc in processes:
+            line = f"{proc.pid:<8} {proc.command:<20} {proc.cpu:<7.1f} {proc.mem:.1f}M{'':<5} {proc.user:<8} {proc.time_str:<10}"
+            self.add_output(line)
+        
+        self.add_output("")
+        self.add_output(f"Tip: Use 'top' for interactive view or 'kill <pid>' to terminate")
+        self.add_output("")
+        
+        self._mark_secret_found("process_viewer")
+    
+    def _kill_process(self, pid):
+        """
+        Kill a process by PID
+        
+        Args:
+            pid: Process ID to kill
+        """
+        success, message, was_virus = self.process_manager.remove_process(pid)
+        
+        if success:
+            self.add_output(message)
+            
+            if was_virus:
+                # Player killed the virus!
+                self.add_output("")
+                self.add_output("=" * 50)
+                self.add_output("ALERT: Malicious process terminated!")
+                self.add_output("=" * 50)
+                self.add_output("")
+                self.add_output("System scan complete...")
+                self.add_output("Threat neutralized.")
+                self.add_output("Performance restored to optimal levels.")
+                self.add_output("")
+                self.add_output("You have uncovered a hidden threat!")
+                self.add_output("")
+                self._mark_secret_found("virus_hunter")
+                
+                # Tangible benefit: Unlock a hint or reduce game difficulty
+                # For now, just mark it as discovered
+                self.process_manager.mark_virus_discovered()
+            else:
+                # Killed a normal process - might have side effects
+                proc = None
+                # We can't get the proc anymore since it's deleted, but we have the message
+                if "python" in message.lower():
+                    self.add_output("Note: Python interpreter terminated")
+                elif "vim" in message.lower() or "emacs" in message.lower():
+                    self.add_output("Note: Text editor terminated")
+        else:
+            self.add_output(message)
+        
+        self.add_output("")
     
     def get_prompt(self):
         """Get the current prompt string with directory"""

@@ -37,6 +37,7 @@ class OregonTrailState(BaseState):
         self.input_buffer = ""
         self.messages = []
         self.waiting_for_input = True
+        self.scroll_offset = 0  # How many lines to scroll back (0 = show most recent)
         
         # Shooting mini-game
         self.shooting_target = None
@@ -61,11 +62,25 @@ class OregonTrailState(BaseState):
     
     def enter(self):
         """Called when entering this state"""
-        # Ensure all attributes are initialized
-        self.messages = ["DO YOU NEED INSTRUCTIONS (YES/NO)?"]
-        self.waiting_for_input = True
-        self.input_buffer = ""
-        self.phase = "instructions"
+        # Initialize scroll offset
+        if not hasattr(self, 'scroll_offset'):
+            self.scroll_offset = 0
+        
+        # Try to load saved game state
+        saved_state = self.game.save_system.load_oregon_trail()
+        if saved_state:
+            self._load_state(saved_state)
+            self._add_message("")
+            self._add_message("Resumed saved game.")
+            if self.phase == "main_game":
+                self._process_main_turn()
+        else:
+            # Start new game
+            self.messages = ["DO YOU NEED INSTRUCTIONS (YES/NO)?"]
+            self.waiting_for_input = True
+            self.input_buffer = ""
+            self.phase = "instructions"
+            self.scroll_offset = 0
     
     def exit(self):
         """Called when exiting this state"""
@@ -73,12 +88,69 @@ class OregonTrailState(BaseState):
         playtime_seconds = time.time() - self.game_start_time
         self.game.save_system.add_playtime(playtime_seconds, "total")
     
+    def _save_state(self):
+        """Save current game state"""
+        state = {
+            "m": self.m,
+            "m2": self.m2,
+            "t": self.t,
+            "a": self.a,
+            "f": self.f,
+            "b": self.b,
+            "c": self.c,
+            "m1": self.m1,
+            "d3": self.d3,
+            "s4": self.s4,
+            "k8": self.k8,
+            "f1": self.f1,
+            "f2": self.f2,
+            "m9": self.m9,
+            "x1": self.x1,
+            "d9": self.d9,
+            "e": self.e,
+            "phase": self.phase,
+            "messages": self.messages[-10:],  # Save last 10 messages
+            "fort_purchasing": self.fort_purchasing,
+            "current_event": self.current_event,
+            "scroll_offset": getattr(self, 'scroll_offset', 0),
+        }
+        self.game.save_system.save_oregon_trail(state)
+    
+    def _load_state(self, state):
+        """Load game state"""
+        self.m = state.get("m", 0)
+        self.m2 = state.get("m2", 0)
+        self.t = state.get("t", 700)
+        self.a = state.get("a", 0)
+        self.f = state.get("f", 0)
+        self.b = state.get("b", 0)
+        self.c = state.get("c", 0)
+        self.m1 = state.get("m1", 0)
+        self.d3 = state.get("d3", 0)
+        self.s4 = state.get("s4", 0)
+        self.k8 = state.get("k8", 0)
+        self.f1 = state.get("f1", 0)
+        self.f2 = state.get("f2", 0)
+        self.m9 = state.get("m9", 0)
+        self.x1 = state.get("x1", -1)
+        self.d9 = state.get("d9", 5)
+        self.e = state.get("e", 2)
+        self.phase = state.get("phase", "instructions")
+        self.messages = state.get("messages", ["DO YOU NEED INSTRUCTIONS (YES/NO)?"])
+        self.fort_purchasing = state.get("fort_purchasing", None)
+        self.current_event = state.get("current_event", None)
+        self.scroll_offset = state.get("scroll_offset", 0)
+        self.waiting_for_input = True
+        self.input_buffer = ""
+    
     def _add_message(self, msg):
         """Add a message to display"""
         self.messages.append(msg)
-        # Keep only last 20 messages for display
-        if len(self.messages) > 20:
-            self.messages = self.messages[-20:]
+        # Keep last 500 messages for scrolling
+        if len(self.messages) > 500:
+            self.messages = self.messages[-500:]
+        # Auto-scroll to bottom when new message is added
+        self.scroll_offset = 0
     
     def _shooting_subroutine(self, d9):
         """Handle shooting mini-game"""
@@ -117,6 +189,7 @@ class OregonTrailState(BaseState):
             return
 
         current_date = self.dates[self.d3]
+        self._add_message("")  # Add spacing between days
         self._add_message(f"MONDAY {current_date} 1847")
         
         # Check Supplies
@@ -442,13 +515,16 @@ class OregonTrailState(BaseState):
                         self.current_event = "riders_circle"
                         return
                 else:  # Friendly
-                    if t1 == 1:
+                    if t1 == 1:  # Run
                         self.m += 15
                         self.a -= 10
-                    elif t1 == 2:
+                    elif t1 == 2:  # Attack
                         self.m -= 5
                         self.b -= 100
-                    elif t1 == 4:
+                    elif t1 == 3:  # Continue
+                        # No penalty for continuing with friendly riders
+                        pass
+                    elif t1 == 4:  # Circle
                         self.m -= 20
                     self._add_message("THEY WERE FRIENDLY.")
                 
@@ -524,15 +600,55 @@ class OregonTrailState(BaseState):
         for event in events:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    # Return to main menu
+                    # Save and return to main menu
                     if self.phase in ["game_over", "victory"]:
+                        # Clear save on game over/victory
+                        self.game.save_system.clear_oregon_trail()
                         self.game.change_state(self.previous_state)
                     elif self.phase == "shooting_mini":
                         # Can't escape during shooting
                         pass
                     else:
-                        # Ask for confirmation
-                        self._add_message("PRESS ESC AGAIN TO QUIT")
+                        # Save state and quit
+                        self._save_state()
+                        self.game.change_state(self.previous_state)
+                elif event.key == pygame.K_q and (pygame.key.get_mods() & pygame.KMOD_CTRL):
+                    # Ctrl-Q: Quit without saving (clear save and start over)
+                    self.game.save_system.clear_oregon_trail()
+                    self.game.change_state(self.previous_state)
+                elif event.key == pygame.K_UP:
+                    # Scroll up (view older messages)
+                    if not hasattr(self, 'scroll_offset'):
+                        self.scroll_offset = 0
+                    self.scroll_offset += 1
+                    max_scroll = max(0, len(self.messages) - (self.renderer.char_height - 3))
+                    self.scroll_offset = min(self.scroll_offset, max_scroll)
+                elif event.key == pygame.K_DOWN:
+                    # Scroll down (view newer messages)
+                    if not hasattr(self, 'scroll_offset'):
+                        self.scroll_offset = 0
+                    self.scroll_offset = max(0, self.scroll_offset - 1)
+                elif event.key == pygame.K_PAGEUP:
+                    # Scroll up by page
+                    if not hasattr(self, 'scroll_offset'):
+                        self.scroll_offset = 0
+                    page_size = self.renderer.char_height - 3
+                    self.scroll_offset += page_size
+                    max_scroll = max(0, len(self.messages) - (self.renderer.char_height - 3))
+                    self.scroll_offset = min(self.scroll_offset, max_scroll)
+                elif event.key == pygame.K_PAGEDOWN:
+                    # Scroll down by page
+                    if not hasattr(self, 'scroll_offset'):
+                        self.scroll_offset = 0
+                    page_size = self.renderer.char_height - 3
+                    self.scroll_offset = max(0, self.scroll_offset - page_size)
+                elif event.key == pygame.K_HOME:
+                    # Scroll to top (oldest messages)
+                    max_scroll = max(0, len(self.messages) - (self.renderer.char_height - 3))
+                    self.scroll_offset = max_scroll
+                elif event.key == pygame.K_END:
+                    # Scroll to bottom (newest messages)
+                    self.scroll_offset = 0
                 elif event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
                     if self.waiting_for_input:
                         if self.phase == "instructions":
@@ -622,10 +738,15 @@ class OregonTrailState(BaseState):
                         elif self.phase == "main_game":
                             if self.fort_purchasing:
                                 self._process_fort_purchase(self.input_buffer)
+                                self.input_buffer = ""  # Clear after processing
                             elif self.current_event:
-                                self._process_event_choice(self.input_buffer)
+                                choice = self.input_buffer.strip()
+                                self.input_buffer = ""  # Clear before processing
+                                self._process_event_choice(choice)
                             else:
-                                self._process_turn_choice(self.input_buffer)
+                                choice = self.input_buffer.strip()
+                                self.input_buffer = ""  # Clear before processing
+                                self._process_turn_choice(choice)
                         elif self.phase == "shooting_mini":
                             if self.current_event in ["riders_attack", "riders_circle", "bandits", "animals"]:
                                 # Process shooting result for event
@@ -675,9 +796,33 @@ class OregonTrailState(BaseState):
                 if not self.messages:
                     self.messages = ["DO YOU NEED INSTRUCTIONS (YES/NO)?"]
             
-            # Display messages (last 20 lines)
+            # Calculate available space for messages
+            # Reserve lines: status (2 if main_game), help (1), input (1-2)
+            reserved_lines = 1  # Help line always
+            if self.phase == "main_game" and self.m > 0:
+                reserved_lines += 2  # Status lines
+            if self.waiting_for_input:
+                if self.phase == "shooting_mini" and hasattr(self, 'shooting_target') and self.shooting_target:
+                    reserved_lines += 2  # Prompt + input
+                else:
+                    reserved_lines += 1  # Input line
+            
+            available_lines = self.renderer.char_height - reserved_lines
+            max_scroll = max(0, len(self.messages) - available_lines)
+            
+            # Clamp scroll offset
+            if not hasattr(self, 'scroll_offset'):
+                self.scroll_offset = 0
+            self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
+            
+            # Get messages to display (from bottom, accounting for scroll)
+            start_idx = len(self.messages) - available_lines - self.scroll_offset
+            start_idx = max(0, start_idx)
+            messages_to_display = self.messages[start_idx:]
+            
+            # Render messages from top, filling available space
             y = 1
-            for msg in self.messages[-20:]:
+            for msg in messages_to_display[:available_lines]:
                 if msg:  # Only render non-empty messages
                     # Truncate long messages to fit screen
                     max_width = getattr(self.renderer, 'char_width', 80) - 2
@@ -686,36 +831,40 @@ class OregonTrailState(BaseState):
                     self.renderer.write(1, y, msg, self.renderer.COLORS['fg'])
                     y += 1
             
+            # Show status at bottom (before input/help)
+            status_start_y = self.renderer.char_height - reserved_lines
+            if self.phase == "main_game" and self.m > 0:
+                self.renderer.write(1, status_start_y, f"MILEAGE: {int(self.m)}/2040", self.renderer.COLORS['menu_normal'])
+                status_start_y += 1
+                self.renderer.write(1, status_start_y, f"FOOD: {int(self.f)}  AMMO: {int(self.b)}  CASH: ${int(self.t)}", self.renderer.COLORS['menu_normal'])
+                status_start_y += 1
+            
             # Display current input prompt and buffer
             if self.waiting_for_input:
+                input_y = status_start_y
                 if self.phase == "shooting_mini" and hasattr(self, 'shooting_target') and self.shooting_target:
                     # Show shooting target prominently
                     prompt = f"TYPE: {self.shooting_target}"
-                    self.renderer.write(1, y, prompt, self.renderer.COLORS['title'])
-                    y += 1
+                    self.renderer.write(1, input_y, prompt, self.renderer.COLORS['title'])
+                    input_y += 1
                     if self.input_buffer:
-                        self.renderer.write(1, y, self.input_buffer, self.renderer.COLORS['fg'])
+                        self.renderer.write(1, input_y, self.input_buffer, self.renderer.COLORS['fg'])
                     else:
-                        self.renderer.write(1, y, "_", self.renderer.COLORS['fg'])
+                        self.renderer.write(1, input_y, "_", self.renderer.COLORS['fg'])
                 else:
                     # Show input buffer with cursor - always show cursor to indicate input is expected
                     input_line = self.input_buffer + "_" if self.input_buffer else "_"
-                    self.renderer.write(1, y, input_line, self.renderer.COLORS['menu_selected'])
-            
-            # Show status at bottom
-            if self.phase == "main_game" and self.m > 0:
-                status_y = self.renderer.char_height - 3
-                self.renderer.write(1, status_y, f"MILEAGE: {int(self.m)}/2040", self.renderer.COLORS['menu_normal'])
-                status_y += 1
-                self.renderer.write(1, status_y, f"FOOD: {int(self.f)}  AMMO: {int(self.b)}  CASH: ${int(self.t)}", self.renderer.COLORS['menu_normal'])
+                    self.renderer.write(1, input_y, input_line, self.renderer.COLORS['menu_selected'])
             
             # Instructions at bottom
-            if self.phase not in ["game_over", "victory"]:
-                help_y = self.renderer.char_height - 1
-                if self.phase == "shooting_mini":
-                    self.renderer.write(1, help_y, "Type the word shown above, then press ENTER", self.renderer.COLORS['menu_normal'])
-                else:
-                    self.renderer.write(1, help_y, "Press ESC to quit", self.renderer.COLORS['menu_normal'])
+            help_y = self.renderer.char_height - 1
+            if self.phase == "shooting_mini":
+                self.renderer.write(1, help_y, "Type the word shown above, then press ENTER", self.renderer.COLORS['menu_normal'])
+            else:
+                help_text = "ESC: Save & Quit | Ctrl-Q: Quit Without Saving"
+                if self.scroll_offset > 0 or max_scroll > 0:
+                    help_text += " | ↑↓: Scroll"
+                self.renderer.write(1, help_y, help_text, self.renderer.COLORS['menu_normal'])
             
             # Actually render the frame
             self.renderer.render()

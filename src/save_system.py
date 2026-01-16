@@ -376,4 +376,22 @@ class SaveSystem:
             return True
         except IOError:
             return False
+    
+    # Oregon Trail save/load
+    def save_oregon_trail(self, game_state):
+        """Save Oregon Trail game state"""
+        if "oregon_trail" not in self.data:
+            self.data["oregon_trail"] = {}
+        self.data["oregon_trail"]["game_state"] = game_state
+        self.save()
+    
+    def load_oregon_trail(self):
+        """Load Oregon Trail game state"""
+        return self.data.get("oregon_trail", {}).get("game_state", None)
+    
+    def clear_oregon_trail(self):
+        """Clear saved Oregon Trail game state"""
+        if "oregon_trail" in self.data:
+            del self.data["oregon_trail"]
+        self.save()
 

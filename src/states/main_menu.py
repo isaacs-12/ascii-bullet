@@ -457,16 +457,35 @@ class MainMenuState(BaseState):
             
             self.add_output("=== STATISTICS ===")
             self.add_output("")
-            self.add_output(f"Games Played: {total_games}")
-            self.add_output(f"Total Time Survived: {total_time}s")
-            self.add_output(f"Enemies Depleted: {stats.get('enemies_depleted', 0)}")
+            self.add_output("Bullet Hell:")
+            self.add_output(f"  Games Played: {total_games}")
+            self.add_output(f"  Total Time Survived: {total_time}s")
+            self.add_output(f"  Enemies Depleted: {stats.get('enemies_depleted', 0)}")
             closest = stats.get('closest_call', 999)
             if closest < 999:
-                self.add_output(f"Closest Call: {closest:.2f} tiles")
+                self.add_output(f"  Closest Call: {closest:.2f} tiles")
             self.add_output("")
-            self.add_output(f"Secrets Found: {len(self.secret_commands_found)}")
-            self.add_output(f"Directories Visited: {exploration['dirs_visited']}")
-            self.add_output(f"Files Read: {exploration['files_read']}")
+            self.add_output("Set Game:")
+            set_games = stats.get('set_games_played', 0)
+            set_wins = stats.get('set_games_won', 0)
+            set_losses = stats.get('set_games_lost', 0)
+            total_sets = stats.get('total_sets_found', 0)
+            best_score = stats.get('best_set_score', 0)
+            if set_games > 0:
+                win_rate = (set_wins / set_games) * 100
+                self.add_output(f"  Games Played: {set_games}")
+                self.add_output(f"  Games Won: {set_wins} ({win_rate:.1f}%)")
+                self.add_output(f"  Games Lost: {set_losses}")
+                self.add_output(f"  Total Sets Found: {total_sets}")
+                if best_score > 0:
+                    self.add_output(f"  Best Score: {best_score} sets")
+            else:
+                self.add_output("  No games played yet")
+            self.add_output("")
+            self.add_output("Exploration:")
+            self.add_output(f"  Secrets Found: {len(self.secret_commands_found)}")
+            self.add_output(f"  Directories Visited: {exploration['dirs_visited']}")
+            self.add_output(f"  Files Read: {exploration['files_read']}")
             self.add_output("")
             return True
         

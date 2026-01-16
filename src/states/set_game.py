@@ -567,6 +567,7 @@ class SetGameState(BaseState):
         self.computer_sets = 0
         self.game_over = False
         self.winner = None
+        self.stats_recorded = False  # Track if stats have been recorded
         
         # Computer AI
         self.computer_difficulty = "normal"  # normal, easy, hard
@@ -730,6 +731,16 @@ class SetGameState(BaseState):
                 self.winner = "computer"
             else:
                 self.winner = "tie"
+            
+            # Record stats (only once)
+            if not self.stats_recorded:
+                self.stats_recorded = True
+                won = (self.winner == "player")
+                self.game.save_system.record_set_game(
+                    self.player_sets,
+                    self.computer_sets,
+                    won
+                )
             return
         
         # If no sets, add 3 more cards

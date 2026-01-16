@@ -62,6 +62,12 @@ class SaveSystem:
                 "bullets_dodged": 0,
                 "closest_call": 999,  # Closest distance to a bullet
                 "enemies_depleted": 0,  # Enemies that ran out of ammo
+                # Set game stats
+                "set_games_played": 0,
+                "set_games_won": 0,
+                "set_games_lost": 0,
+                "total_sets_found": 0,
+                "best_set_score": 0,  # Best player sets in a single game
             },
             
             # Settings
@@ -227,6 +233,37 @@ class SaveSystem:
                 # For counters, add to existing
                 self.data["stats"][stat_name] += value
             self.save()
+    
+    def record_set_game(self, player_sets, computer_sets, won):
+        """
+        Record a Set game result
+        
+        Args:
+            player_sets: Number of sets found by player
+            computer_sets: Number of sets found by computer
+            won: True if player won, False if lost
+        """
+        # Initialize stats if they don't exist
+        if "set_games_played" not in self.data["stats"]:
+            self.data["stats"]["set_games_played"] = 0
+            self.data["stats"]["set_games_won"] = 0
+            self.data["stats"]["set_games_lost"] = 0
+            self.data["stats"]["total_sets_found"] = 0
+            self.data["stats"]["best_set_score"] = 0
+        
+        self.data["stats"]["set_games_played"] += 1
+        if won:
+            self.data["stats"]["set_games_won"] += 1
+        else:
+            self.data["stats"]["set_games_lost"] += 1
+        
+        self.data["stats"]["total_sets_found"] += player_sets
+        
+        # Update best score if this is better
+        if player_sets > self.data["stats"]["best_set_score"]:
+            self.data["stats"]["best_set_score"] = player_sets
+        
+        self.save()
     
     def get_stat(self, stat_name):
         """Get a specific stat"""

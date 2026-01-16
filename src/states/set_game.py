@@ -565,7 +565,13 @@ class SetGameState(BaseState):
         # Computer AI
         self.computer_difficulty = "normal"  # normal, easy, hard
         self.computer_timer = 0
-        self.computer_next_action_time = random.uniform(5.0, 25.0)
+        # Normal: 12-45 seconds, Hard: 5-25 seconds
+        if self.computer_difficulty == "normal":
+            self.computer_next_action_time = random.uniform(12.0, 45.0)
+        elif self.computer_difficulty == "hard":
+            self.computer_next_action_time = random.uniform(5.0, 25.0)
+        else:  # easy
+            self.computer_next_action_time = random.uniform(20.0, 60.0)
         
         # Deal initial 12 cards
         for _ in range(12):
@@ -721,7 +727,13 @@ class SetGameState(BaseState):
         self.computer_timer += dt_seconds
         if self.computer_timer >= self.computer_next_action_time:
             self.computer_timer = 0
-            self.computer_next_action_time = random.uniform(5.0, 25.0)
+            # Normal: 12-45 seconds, Hard: 5-25 seconds
+            if self.computer_difficulty == "normal":
+                self.computer_next_action_time = random.uniform(12.0, 45.0)
+            elif self.computer_difficulty == "hard":
+                self.computer_next_action_time = random.uniform(5.0, 25.0)
+            else:  # easy
+                self.computer_next_action_time = random.uniform(20.0, 60.0)
             
             # Computer tries to take a set
             if self._computer_take_set():

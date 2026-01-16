@@ -1,6 +1,7 @@
 """Main game class"""
 
 import sys
+import time
 import pygame
 from src.terminal_renderer import TerminalRenderer
 from src.states.main_menu import MainMenuState
@@ -21,6 +22,11 @@ class Game:
         # Game state
         self.running = True
         self.current_state = None
+        
+        # Playtime tracking
+        self.session_start_time = time.time()
+        self.last_playtime_save = time.time()
+        self.playtime_save_interval = 30.0  # Save playtime every 30 seconds
         
         # Initialize with main menu
         self.change_state(MainMenuState(self))
@@ -63,6 +69,16 @@ class Game:
         """
         if self.current_state:
             self.current_state.update(dt)
+        
+        # Track playtime
+        current_time = time.time()
+        elapsed = current_time - self.last_playtime_save
+        
+        if elapsed >= self.playtime_save_interval:
+            # Save playtime periodically
+            dt_seconds = elapsed
+            self.save_system.add_playtime(dt_seconds, "total")
+            self.last_playtime_save = current_time
     
     def render(self):
         """Render the current game state"""
@@ -84,6 +100,12 @@ class Game:
                 self.render()
         
         finally:
+            # Save any remaining playtime before exiting
+            current_time = time.time()
+            elapsed = current_time - self.last_playtime_save
+            if elapsed > 0:
+                self.save_system.add_playtime(elapsed, "total")
+            
             # Clean up
             self.renderer.quit()
             sys.exit(0)

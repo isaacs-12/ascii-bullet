@@ -568,6 +568,7 @@ class SetGameState(BaseState):
         self.game_over = False
         self.winner = None
         self.stats_recorded = False  # Track if stats have been recorded
+        self.game_start_time = time.time()  # Track playtime
         
         # Computer AI
         self.computer_difficulty = "normal"  # normal, easy, hard
@@ -741,6 +742,9 @@ class SetGameState(BaseState):
                     self.computer_sets,
                     won
                 )
+                # Track playtime
+                playtime_seconds = time.time() - self.game_start_time
+                self.game.save_system.add_playtime(playtime_seconds, "set_game")
             return
         
         # If no sets, add 3 more cards

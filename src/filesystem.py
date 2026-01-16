@@ -914,4 +914,31 @@ class VirtualFileSystem:
         self.user_deleted_files = set()
         self.file_permissions = {}
         self.current_user = "pilot"
+    
+    def reset_filesystem_keep_user_files(self):
+        """
+        Reset filesystem to defaults but preserve user-created files.
+        Moves all user-created files to the starting directory (blthll).
+        """
+        # Save user-created files
+        saved_files = {}
+        saved_dirs = []
+        
+        # Collect all user-created files
+        for path, content in self.user_created_files.items():
+            # Extract just the filename
+            path_parts = path.strip('/').split('/')
+            filename = path_parts[-1]
+            # Save to blthll directory
+            new_path = '/home/pilot/blthll/' + filename
+            saved_files[new_path] = content
+        
+        # Collect user-created directories (but we'll just keep files for now)
+        # Directories are more complex, so we'll skip them for simplicity
+        
+        # Reset everything
+        self.reset_to_defaults()
+        
+        # Restore user-created files to blthll
+        self.user_created_files = saved_files
 

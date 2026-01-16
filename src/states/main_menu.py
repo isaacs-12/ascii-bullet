@@ -455,11 +455,33 @@ class MainMenuState(BaseState):
             total_time = self.game.save_system.data["total_time_survived"] // 1000
             exploration = self.game.save_system.get_exploration_stats()
             
+            # Helper to format time
+            def format_time(seconds):
+                hours = int(seconds // 3600)
+                minutes = int((seconds % 3600) // 60)
+                secs = int(seconds % 60)
+                if hours > 0:
+                    return f"{hours}h {minutes}m {secs}s"
+                elif minutes > 0:
+                    return f"{minutes}m {secs}s"
+                else:
+                    return f"{secs}s"
+            
             self.add_output("=== STATISTICS ===")
             self.add_output("")
+            
+            # Overall playtime
+            total_playtime = stats.get('total_playtime_seconds', 0)
+            if total_playtime > 0:
+                self.add_output(f"Total Playtime: {format_time(total_playtime)}")
+                self.add_output("")
+            
             self.add_output("Bullet Hell:")
             self.add_output(f"  Games Played: {total_games}")
             self.add_output(f"  Total Time Survived: {total_time}s")
+            bullet_hell_time = stats.get('bullet_hell_playtime_seconds', 0)
+            if bullet_hell_time > 0:
+                self.add_output(f"  Total Playtime: {format_time(bullet_hell_time)}")
             self.add_output(f"  Enemies Depleted: {stats.get('enemies_depleted', 0)}")
             closest = stats.get('closest_call', 999)
             if closest < 999:
@@ -471,6 +493,7 @@ class MainMenuState(BaseState):
             set_losses = stats.get('set_games_lost', 0)
             total_sets = stats.get('total_sets_found', 0)
             best_score = stats.get('best_set_score', 0)
+            set_game_time = stats.get('set_game_playtime_seconds', 0)
             if set_games > 0:
                 win_rate = (set_wins / set_games) * 100
                 self.add_output(f"  Games Played: {set_games}")
@@ -479,6 +502,8 @@ class MainMenuState(BaseState):
                 self.add_output(f"  Total Sets Found: {total_sets}")
                 if best_score > 0:
                     self.add_output(f"  Best Score: {best_score} sets")
+                if set_game_time > 0:
+                    self.add_output(f"  Total Playtime: {format_time(set_game_time)}")
             else:
                 self.add_output("  No games played yet")
             self.add_output("")
@@ -653,6 +678,32 @@ class MainMenuState(BaseState):
             self.add_output("Save data and filesystem reset! Starting fresh.")
             self.add_output("")
             self._mark_secret_found("fresh_start")
+        
+        elif cmd_lower == "rm save --filesystem":
+            # Reset only filesystem
+            self.add_output("Resetting filesystem to defaults...")
+            self.add_output("")
+            self.game.save_system.reset_filesystem()
+            self.filesystem.reset_to_defaults()
+            self.add_output("Filesystem reset! Stats and other data preserved.")
+            self.add_output("")
+        
+        elif cmd_lower == "rm save --stats":
+            # Reset only game statistics
+            self.add_output("Resetting game statistics...")
+            self.add_output("")
+            self.game.save_system.reset_stats()
+            self.add_output("Statistics reset! Filesystem and other data preserved.")
+            self.add_output("")
+        
+        elif cmd_lower == "rm save --filesystem-keep-files":
+            # Reset filesystem but keep user-created files
+            self.add_output("Resetting filesystem (preserving your files)...")
+            self.add_output("")
+            self.game.save_system.reset_filesystem()
+            self.filesystem.reset_filesystem_keep_user_files()
+            self.add_output("Filesystem reset! Your custom files have been moved to blthll/")
+            self.add_output("")
         
         elif cmd_lower.startswith("rm ") and not cmd_lower.startswith("rm -"):
             # Delete file
@@ -851,6 +902,13 @@ class MainMenuState(BaseState):
             set_state = SetGameState(self.game, self)
             self.game.change_state(set_state)
             self._mark_secret_found("set_player")
+        
+        elif cmd_lower == "start oregon":
+            # Launch Oregon Trail game
+            from src.states.oregon_trail import OregonTrailState
+            oregon_state = OregonTrailState(self.game, self)
+            self.game.change_state(oregon_state)
+            self._mark_secret_found("oregon_trail")
         
         elif cmd_lower in ["top", "htop"]:
             # Interactive process viewer

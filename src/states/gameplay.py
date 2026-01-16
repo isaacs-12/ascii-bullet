@@ -111,6 +111,9 @@ class GameplayState(BaseState):
             self.game_over = True
             # Save score on game over
             self.game.save_system.add_score(self.score, self.survival_time)
+            # Track playtime
+            playtime_seconds = self.survival_time / 1000.0
+            self.game.save_system.add_playtime(playtime_seconds, "bullet_hell")
     
     def render(self):
         """Render the game"""

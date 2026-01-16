@@ -68,6 +68,10 @@ class SaveSystem:
                 "set_games_lost": 0,
                 "total_sets_found": 0,
                 "best_set_score": 0,  # Best player sets in a single game
+                # Playtime tracking
+                "total_playtime_seconds": 0,  # Total playtime across all sessions
+                "bullet_hell_playtime_seconds": 0,  # Time in bullet hell game
+                "set_game_playtime_seconds": 0,  # Time in set game
             },
             
             # Settings
@@ -302,6 +306,66 @@ class SaveSystem:
     def reset_save(self):
         """Reset all save data (destructive!)"""
         self.data = self._default_save_data()
+        self.save()
+    
+    def reset_filesystem(self):
+        """Reset only filesystem state"""
+        self.data["filesystem"] = None
+        self.save()
+    
+    def reset_stats(self):
+        """Reset only game statistics"""
+        default_stats = {
+            "bullets_dodged": 0,
+            "closest_call": 999,
+            "enemies_depleted": 0,
+            "set_games_played": 0,
+            "set_games_won": 0,
+            "set_games_lost": 0,
+            "total_sets_found": 0,
+            "best_set_score": 0,
+            "total_playtime_seconds": 0,
+            "bullet_hell_playtime_seconds": 0,
+            "set_game_playtime_seconds": 0,
+        }
+        self.data["stats"] = default_stats
+        self.data["high_scores"] = []
+        self.data["total_games_played"] = 0
+        self.data["total_time_survived"] = 0
+        self.save()
+    
+    def add_playtime(self, seconds, game_type="total"):
+        """
+        Add playtime to stats
+        
+        Args:
+            seconds: Number of seconds to add
+            game_type: "total", "bullet_hell", or "set_game"
+        """
+        if "stats" not in self.data:
+            self.data["stats"] = {}
+        
+        if game_type == "total":
+            if "total_playtime_seconds" not in self.data["stats"]:
+                self.data["stats"]["total_playtime_seconds"] = 0
+            self.data["stats"]["total_playtime_seconds"] += seconds
+        elif game_type == "bullet_hell":
+            if "bullet_hell_playtime_seconds" not in self.data["stats"]:
+                self.data["stats"]["bullet_hell_playtime_seconds"] = 0
+            self.data["stats"]["bullet_hell_playtime_seconds"] += seconds
+            # Also add to total
+            if "total_playtime_seconds" not in self.data["stats"]:
+                self.data["stats"]["total_playtime_seconds"] = 0
+            self.data["stats"]["total_playtime_seconds"] += seconds
+        elif game_type == "set_game":
+            if "set_game_playtime_seconds" not in self.data["stats"]:
+                self.data["stats"]["set_game_playtime_seconds"] = 0
+            self.data["stats"]["set_game_playtime_seconds"] += seconds
+            # Also add to total
+            if "total_playtime_seconds" not in self.data["stats"]:
+                self.data["stats"]["total_playtime_seconds"] = 0
+            self.data["stats"]["total_playtime_seconds"] += seconds
+        
         self.save()
     
     def export_save(self, filepath):

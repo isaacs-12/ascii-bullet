@@ -61,7 +61,43 @@ class PlayerShip(Entity):
             "  /_/   \\_\\  "
         ]
         super().__init__(x, y, art)
-        self.max_speed = 15.0  # Characters per second
+        self.max_speed = 22.5  # Characters per second (increased 50%)
+    
+    def collides_with(self, other):
+        """Custom collision - small hitbox around cockpit"""
+        # Ship layout (13 chars wide, 5 rows tall):
+        #   "      ^      " row 0
+        #   "     / \     " row 1
+        #   "    /   \    " row 2
+        #   "   |=[O]=|   " row 3 - O is at index 6
+        #   "  /_/   \_\  " row 4
+        
+        # Small rectangular hitbox: cockpit area covering =[O]= (indices 4-8, rows 2-3)
+        cockpit_start_x = int(self.x) + 4
+        cockpit_end_x = int(self.x) + 9  # Exclusive (covers indices 4, 5, 6, 7, 8)
+        cockpit_start_y = int(self.y) + 2
+        cockpit_end_y = int(self.y) + 4  # Exclusive (covers rows 2 and 3)
+        
+        # Get bullet's rendered position
+        bullet_x = int(other.x)
+        bullet_y = int(other.y)
+        
+        # Hit if bullet is in the cockpit area
+        return (cockpit_start_x <= bullet_x < cockpit_end_x and 
+                cockpit_start_y <= bullet_y < cockpit_end_y)
+    
+    def _point_in_triangle(self, px, py, x1, y1, x2, y2, x3, y3):
+        """Check if point (px, py) is inside triangle defined by (x1,y1), (x2,y2), (x3,y3)"""
+        # Using barycentric coordinates
+        denom = ((y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3))
+        if abs(denom) < 0.001:  # Degenerate triangle
+            return False
+        
+        a = ((y2 - y3) * (px - x3) + (x3 - x2) * (py - y3)) / denom
+        b = ((y3 - y1) * (px - x3) + (x1 - x3) * (py - y3)) / denom
+        c = 1 - a - b
+        
+        return 0 <= a <= 1 and 0 <= b <= 1 and 0 <= c <= 1
 
 
 class Bullet(Entity):
@@ -94,6 +130,11 @@ class Drone(Entity):
         super().__init__(x, y, art)
         self.shoot_cooldown = 0
         self.shoot_interval = random.uniform(3.0, 6.0)
+        
+        # Movement pattern
+        self.formation_x = x
+        self.formation_y = y
+        self.dive_cooldown = random.uniform(3.0, 8.0)
 
 
 class Guard(Entity):
@@ -109,6 +150,11 @@ class Guard(Entity):
         super().__init__(x, y, art)
         self.shoot_cooldown = 0
         self.shoot_interval = random.uniform(4.0, 7.0)
+        
+        # Movement pattern
+        self.formation_x = x
+        self.formation_y = y
+        self.dive_cooldown = random.uniform(4.0, 10.0)
 
 
 class Boss(Entity):
@@ -126,6 +172,11 @@ class Boss(Entity):
         self.shoot_cooldown = 0
         self.shoot_interval = random.uniform(2.0, 4.0)
         self.health = 5  # Boss takes multiple hits
+        
+        # Movement pattern
+        self.formation_x = x
+        self.formation_y = y
+        self.dive_cooldown = random.uniform(5.0, 12.0)
 
 
 class GalagaGameplayState(BaseState):
@@ -153,6 +204,11 @@ class GalagaGameplayState(BaseState):
         # Shooting cooldown
         self.shoot_cooldown = 0
         self.shoot_delay = 0.3  # Seconds between shots
+        
+        # Synchronized movement patterns per enemy type
+        self.drone_pattern_time = 0
+        self.guard_pattern_time = 0
+        self.boss_pattern_time = 0
         
         # Spawn first wave
         self._spawn_wave()
@@ -251,14 +307,78 @@ class GalagaGameplayState(BaseState):
             if bullet.y > 50:
                 self.enemy_bullets.remove(bullet)
         
+        # Update synchronized pattern times for each enemy class
+        self.drone_pattern_time += dt_seconds
+        self.guard_pattern_time += dt_seconds
+        self.boss_pattern_time += dt_seconds
+        
         # Update enemies and make them shoot
         for enemy in self.enemies:
-            # Simple sine wave movement
-            enemy.velocity_x = math.sin(self.game.renderer.clock.get_time() / 1000.0 + enemy.x) * 5
+            # Get the synchronized pattern time for this enemy's class
+            if isinstance(enemy, Boss):
+                pattern_time = self.boss_pattern_time
+            elif isinstance(enemy, Guard):
+                pattern_time = self.guard_pattern_time
+            else:  # Drone
+                pattern_time = self.drone_pattern_time
+            
+            enemy.dive_cooldown -= dt_seconds
+            
+            # Galaga-style movement patterns
+            if enemy.dive_cooldown <= 0:
+                # Dive attack pattern
+                enemy.dive_cooldown = random.uniform(8.0, 15.0)
+                dive_amplitude = 20
+                dive_speed = 3.0
+                
+                # Swooping pattern
+                offset_x = dive_amplitude * math.sin(pattern_time * dive_speed)
+                offset_y = 10 * math.sin(pattern_time * dive_speed * 0.5)
+                
+                target_x = enemy.formation_x + offset_x
+                target_y = enemy.formation_y + offset_y
+                
+                # Move towards target
+                dx = target_x - enemy.x
+                dy = target_y - enemy.y
+                dist = math.sqrt(dx * dx + dy * dy)
+                
+                if dist > 0.5:
+                    enemy.velocity_x = (dx / dist) * 15
+                    enemy.velocity_y = (dy / dist) * 8
+                else:
+                    enemy.velocity_x = 0
+                    enemy.velocity_y = 0
+            else:
+                # Formation hovering - gentle side-to-side (synchronized by class)
+                hover_offset = math.sin(pattern_time * 2.0) * 8
+                target_x = enemy.formation_x + hover_offset
+                
+                dx = target_x - enemy.x
+                enemy.velocity_x = dx * 2.0  # Smooth following
+                enemy.velocity_y = (enemy.formation_y - enemy.y) * 1.0
+            
+            # Check for collisions with other enemies and push away
+            for other in self.enemies:
+                if other is enemy:
+                    continue
+                
+                dx = enemy.x - other.x
+                dy = enemy.y - other.y
+                dist = math.sqrt(dx * dx + dy * dy)
+                
+                # If too close, push away
+                min_dist = max(enemy.width, enemy.height) * 0.8
+                if dist < min_dist and dist > 0:
+                    push_force = (min_dist - dist) * 0.5
+                    enemy.velocity_x += (dx / dist) * push_force
+                    enemy.velocity_y += (dy / dist) * push_force
+            
             enemy.update(dt_seconds)
             
             # Keep enemies in bounds
             enemy.x = max(0, min(enemy.x, 80 - enemy.width))
+            enemy.y = max(-5, min(enemy.y, 50))
             
             # Enemy shooting
             enemy.shoot_cooldown -= dt_seconds
@@ -292,7 +412,7 @@ class GalagaGameplayState(BaseState):
         
         # Check enemy bullet collisions with player
         for bullet in self.enemy_bullets[:]:
-            if bullet.collides_with(self.player):
+            if self.player.collides_with(bullet):
                 self.game_over = True
                 return
         

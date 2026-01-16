@@ -815,6 +815,17 @@ class MainMenuState(BaseState):
             self.add_output("usage: sudo <command>")
             self.add_output("")
         
+        elif cmd_lower == "start spacebullets":
+            # Launch Galaga game (only if virus was killed)
+            if self.game.save_system.is_virus_killed():
+                from src.states.galaga_gameplay import GalagaGameplayState
+                galaga_state = GalagaGameplayState(self.game, self)
+                self.game.change_state(galaga_state)
+                self._mark_secret_found("arcade_master")
+            else:
+                self.add_output("start: 'spacebullets' - command not found")
+                self.add_output("")
+        
         elif cmd_lower in ["top", "htop"]:
             # Interactive process viewer
             from src.states.top_viewer import TopViewerState
@@ -1096,10 +1107,12 @@ class MainMenuState(BaseState):
                 self.add_output("")
                 self.add_output("You have uncovered a hidden threat!")
                 self.add_output("")
+                self.add_output("New system utility unlocked: 'start spacebullets'")
+                self.add_output("")
                 self._mark_secret_found("virus_hunter")
                 
-                # Tangible benefit: Unlock a hint or reduce game difficulty
-                # For now, just mark it as discovered
+                # Unlock the galaga game
+                self.game.save_system.mark_virus_killed()
                 self.process_manager.mark_virus_discovered()
             else:
                 # Killed a normal process - might have side effects

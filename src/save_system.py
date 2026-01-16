@@ -51,6 +51,7 @@ class SaveSystem:
             # Discoveries
             "secret_commands_found": [],  # List of secret command IDs
             "installed_packages": [],  # List of brew-installed package names
+            "virus_killed": False,  # Whether the player killed the virus process
             "filesystem_explored": {
                 "directories_visited": [],
                 "files_read": []
@@ -178,6 +179,16 @@ class SaveSystem:
         if "installed_packages" not in self.data:
             return []
         return self.data["installed_packages"]
+    
+    # Virus status
+    def mark_virus_killed(self):
+        """Mark that the player killed the virus"""
+        self.data["virus_killed"] = True
+        self.save()
+    
+    def is_virus_killed(self):
+        """Check if the virus has been killed"""
+        return self.data.get("virus_killed", False)
     
     # Filesystem Exploration
     def mark_directory_visited(self, path):

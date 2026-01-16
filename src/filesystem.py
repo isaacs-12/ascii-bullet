@@ -121,7 +121,7 @@ class VirtualFileSystem:
                                                     'developer_notes.txt': [
                                                         "TODO: Add more particle effects",
                                                         "",
-                                                        "NOTICE: System running slow lately -- figure out why..."
+                                                        "TODO: System running slow lately -- figure out why..."
                                                     ]
                                                 }
                                             },
@@ -135,11 +135,11 @@ class VirtualFileSystem:
                                                 "Pattern: Spiral, Linear, Radial"
                                             ],
                                             'highscores.txt': [
-                                                "HIGH SCORES",
+                                                "DEV HIGH SCORES",
                                                 "===========",
                                                 "1. PLAYER1 - 999999",
                                                 "2. HACKER  - 123456",
-                                                "3. NOOB    - 00042"
+                                                "3. WALLY   - 00042"
                                             ]
                                         }
                                     },

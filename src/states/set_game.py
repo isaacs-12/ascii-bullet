@@ -624,9 +624,12 @@ class SetGameState(BaseState):
             card_x = self.start_x + col * self.card_spacing_x
             card_y = self.start_y + row * self.card_spacing_y
             
-            # Check if click is within card bounds
-            if (card_x <= click_x < card_x + card.get_card_width() and
-                card_y <= click_y < card_y + card.get_card_height()):
+            # Check if click is within card bounds (full card area)
+            card_width = card.get_card_width()
+            card_height = card.get_card_height()
+            
+            if (card_x <= click_x < card_x + card_width and
+                card_y <= click_y < card_y + card_height):
                 
                 # Toggle selection
                 if i in self.selected_cards:
@@ -645,10 +648,12 @@ class SetGameState(BaseState):
                     else:
                         # Invalid set - deselect
                         for idx in self.selected_cards:
-                            self.board[idx].selected = False
+                            if idx < len(self.board):
+                                self.board[idx].selected = False
                         self.selected_cards = []
                 
-                break
+                # Break after finding the clicked card
+                return
     
     def _check_and_remove_set(self):
         """Check if selected cards form a set and remove them if valid"""

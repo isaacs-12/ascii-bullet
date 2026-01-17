@@ -68,10 +68,16 @@ class SaveSystem:
                 "set_games_lost": 0,
                 "total_sets_found": 0,
                 "best_set_score": 0,  # Best player sets in a single game
+                # Asteroids game stats
+                "asteroids_games_played": 0,
+                "asteroids_best_score": 0,
+                "asteroids_total_score": 0,
+                "asteroids_highest_stage": 0,
                 # Playtime tracking
-                "total_playtime_seconds": 0,  # Total playtime across all sessions
-                "bullet_hell_playtime_seconds": 0,  # Time in bullet hell game
-                "set_game_playtime_seconds": 0,  # Time in set game
+                "total_playtime_seconds": 0,
+                "bullet_hell_playtime_seconds": 0,
+                "set_game_playtime_seconds": 0,
+                "asteroids_playtime_seconds": 0,
             },
             
             # Settings
@@ -269,6 +275,76 @@ class SaveSystem:
         
         self.save()
     
+    def record_asteroids_game(self, score, stage):
+        """
+        Record an Asteroids game result
+        
+        Args:
+            score: Final score achieved
+            stage: Highest stage reached
+        """
+        # Initialize stats if they don't exist
+        if "asteroids_games_played" not in self.data["stats"]:
+            self.data["stats"]["asteroids_games_played"] = 0
+            self.data["stats"]["asteroids_best_score"] = 0
+            self.data["stats"]["asteroids_total_score"] = 0
+            self.data["stats"]["asteroids_highest_stage"] = 0
+        
+        self.data["stats"]["asteroids_games_played"] += 1
+        self.data["stats"]["asteroids_total_score"] += score
+        
+        # Update best score if this is better
+        if score > self.data["stats"]["asteroids_best_score"]:
+            self.data["stats"]["asteroids_best_score"] = score
+        
+        # Update highest stage if this is better
+        if stage > self.data["stats"]["asteroids_highest_stage"]:
+            self.data["stats"]["asteroids_highest_stage"] = stage
+        
+        self.save()
+    
+    def add_playtime(self, seconds, game_type="total"):
+        """
+        Add playtime to stats
+        
+        Args:
+            seconds: Number of seconds to add
+            game_type: "total", "bullet_hell", "set_game", or "asteroids"
+        """
+        if "stats" not in self.data:
+            self.data["stats"] = {}
+        
+        if game_type == "total":
+            if "total_playtime_seconds" not in self.data["stats"]:
+                self.data["stats"]["total_playtime_seconds"] = 0
+            self.data["stats"]["total_playtime_seconds"] += seconds
+        elif game_type == "bullet_hell":
+            if "bullet_hell_playtime_seconds" not in self.data["stats"]:
+                self.data["stats"]["bullet_hell_playtime_seconds"] = 0
+            self.data["stats"]["bullet_hell_playtime_seconds"] += seconds
+            # Also add to total
+            if "total_playtime_seconds" not in self.data["stats"]:
+                self.data["stats"]["total_playtime_seconds"] = 0
+            self.data["stats"]["total_playtime_seconds"] += seconds
+        elif game_type == "set_game":
+            if "set_game_playtime_seconds" not in self.data["stats"]:
+                self.data["stats"]["set_game_playtime_seconds"] = 0
+            self.data["stats"]["set_game_playtime_seconds"] += seconds
+            # Also add to total
+            if "total_playtime_seconds" not in self.data["stats"]:
+                self.data["stats"]["total_playtime_seconds"] = 0
+            self.data["stats"]["total_playtime_seconds"] += seconds
+        elif game_type == "asteroids":
+            if "asteroids_playtime_seconds" not in self.data["stats"]:
+                self.data["stats"]["asteroids_playtime_seconds"] = 0
+            self.data["stats"]["asteroids_playtime_seconds"] += seconds
+            # Also add to total
+            if "total_playtime_seconds" not in self.data["stats"]:
+                self.data["stats"]["total_playtime_seconds"] = 0
+            self.data["stats"]["total_playtime_seconds"] += seconds
+        
+        self.save()
+    
     def get_stat(self, stat_name):
         """Get a specific stat"""
         return self.data["stats"].get(stat_name, 0)
@@ -324,9 +400,14 @@ class SaveSystem:
             "set_games_lost": 0,
             "total_sets_found": 0,
             "best_set_score": 0,
+            "asteroids_games_played": 0,
+            "asteroids_best_score": 0,
+            "asteroids_total_score": 0,
+            "asteroids_highest_stage": 0,
             "total_playtime_seconds": 0,
             "bullet_hell_playtime_seconds": 0,
             "set_game_playtime_seconds": 0,
+            "asteroids_playtime_seconds": 0,
         }
         self.data["stats"] = default_stats
         self.data["high_scores"] = []

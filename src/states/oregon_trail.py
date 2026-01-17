@@ -52,12 +52,12 @@ class OregonTrailState(BaseState):
         self.event_choice = None
         
         self.dates = [
-        "APRIL 12", "APRIL 26", "MAY 10", "MAY 24", "JUNE 7", "JUNE 21",
-        "JULY 5", "JULY 19", "AUGUST 2", "AUGUST 16", "AUGUST 31",
-        "SEPTEMBER 13", "SEPTEMBER 27", "OCTOBER 11", "OCTOBER 25",
-        "NOVEMBER 8", "NOVEMBER 22", "DECEMBER 6", "DECEMBER 20"
-    ]
-
+            "APRIL 12", "APRIL 26", "MAY 10", "MAY 24", "JUNE 7", "JUNE 21",
+            "JULY 5", "JULY 19", "AUGUST 2", "AUGUST 16", "AUGUST 31",
+            "SEPTEMBER 13", "SEPTEMBER 27", "OCTOBER 11", "OCTOBER 25",
+            "NOVEMBER 8", "NOVEMBER 22", "DECEMBER 6", "DECEMBER 20"
+        ]
+        
         self.game_start_time = time.time()
     
     def enter(self):
@@ -200,7 +200,7 @@ class OregonTrailState(BaseState):
         
         if self.f < 13:
             self._add_message("YOU'D BETTER DO SOME HUNTING OR BUY FOOD SOON!!!!")
-            
+        
         # Doctor's Bills
         if self.s4 == 1 or self.k8 == 1:
             self.t -= 20
@@ -241,7 +241,7 @@ class OregonTrailState(BaseState):
             if choice == "1": x = 1
             elif choice == "2": x = 2
             else: x = 3
-            
+        
         self.x1 *= -1  # Toggle fort availability
         
         if x == 1:  # Fort
@@ -515,16 +515,13 @@ class OregonTrailState(BaseState):
                         self.current_event = "riders_circle"
                         return
                 else:  # Friendly
-                    if t1 == 1:  # Run
+                    if t1 == 1:
                         self.m += 15
                         self.a -= 10
-                    elif t1 == 2:  # Attack
+                    elif t1 == 2:
                         self.m -= 5
                         self.b -= 100
-                    elif t1 == 3:  # Continue
-                        # No penalty for continuing with friendly riders
-                        pass
-                    elif t1 == 4:  # Circle
+                    elif t1 == 4:
                         self.m -= 20
                     self._add_message("THEY WERE FRIENDLY.")
                 
@@ -537,6 +534,7 @@ class OregonTrailState(BaseState):
         
         elif self.current_event == "riders_attack":
             # Shooting result already processed, just apply effects
+            # b1 was calculated in handle_events before calling this
             if hasattr(self, '_last_shooting_result'):
                 b1 = self._last_shooting_result
                 self.b -= b1 * 40 + 80
@@ -609,7 +607,7 @@ class OregonTrailState(BaseState):
                         # Can't escape during shooting
                         pass
                     else:
-                        # Save state and quit
+                        # Save state and return
                         self._save_state()
                         self.game.change_state(self.previous_state)
                 elif event.key == pygame.K_q and (pygame.key.get_mods() & pygame.KMOD_CTRL):
@@ -664,14 +662,12 @@ class OregonTrailState(BaseState):
                                 self._add_message("SPEND THE REST ON OXEN, FOOD, AMMO, CLOTHING, AND SUPPLIES.")
                                 self._add_message("GOOD LUCK!!!")
                                 self._add_message("")
-                            # Move to shooting skill selection regardless of answer
                             self.phase = "shooting_skill"
                             self._add_message("HOW GOOD A SHOT ARE YOU?")
                             self._add_message("(1) ACE MARKSMAN, (2) GOOD SHOT, (3) FAIR TO MIDDLIN'")
                             self._add_message("(4) NEED MORE PRACTICE, (5) SHAKY KNEES")
                             self._add_message("ENTER 1-5: ")
                             self.input_buffer = ""
-                            self.waiting_for_input = True
                         elif self.phase == "shooting_skill":
                             try:
                                 self.d9 = int(self.input_buffer)
@@ -738,20 +734,14 @@ class OregonTrailState(BaseState):
                         elif self.phase == "main_game":
                             if self.fort_purchasing:
                                 self._process_fort_purchase(self.input_buffer)
-                                self.input_buffer = ""  # Clear after processing
                             elif self.current_event:
-                                choice = self.input_buffer.strip()
-                                self.input_buffer = ""  # Clear before processing
-                                self._process_event_choice(choice)
+                                self._process_event_choice(self.input_buffer)
                             else:
-                                choice = self.input_buffer.strip()
-                                self.input_buffer = ""  # Clear before processing
-                                self._process_turn_choice(choice)
+                                self._process_turn_choice(self.input_buffer)
                         elif self.phase == "shooting_mini":
                             if self.current_event in ["riders_attack", "riders_circle", "bandits", "animals"]:
                                 # Process shooting result for event
                                 b1 = self._process_shooting_result()
-                                self._last_shooting_result = b1
                                 self._process_event_choice("")  # Process the event with shooting result
                             else:
                                 # Regular hunting
@@ -830,7 +820,7 @@ class OregonTrailState(BaseState):
                         msg = msg[:max_width]
                     self.renderer.write(1, y, msg, self.renderer.COLORS['fg'])
                     y += 1
-            
+        
             # Show status at bottom (before input/help)
             status_start_y = self.renderer.char_height - reserved_lines
             if self.phase == "main_game" and self.m > 0:

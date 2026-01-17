@@ -394,6 +394,11 @@ class AsteroidsGameplayState(BaseState):
         self.frame_timer = 0
         self.target_fps = 30
         self.frame_time = 1000.0 / self.target_fps
+        
+        # Playtime tracking
+        import time
+        self.game_start_time = time.time()
+        self.stats_recorded = False
     
     def handle_events(self, events):
         """Handle input events"""
@@ -426,6 +431,15 @@ class AsteroidsGameplayState(BaseState):
     
     def update(self, dt):
         """Update game logic - original game logic"""
+        # Record stats when game ends
+        if self.gameState == "Game Over" and not self.stats_recorded:
+            import time
+            playtime_seconds = time.time() - self.game_start_time
+            self.game.save_system.record_asteroids_game(self.score, self.stage)
+            self.game.save_system.add_playtime(playtime_seconds, "asteroids")
+            self.stats_recorded = True
+            return
+        
         if self.gameState == "Game Over":
             return
         
@@ -633,6 +647,30 @@ class AsteroidsGameplayState(BaseState):
     
     def render(self):
         """Render the game - original rendering logic"""
+        # If game over, only show terminal renderer game over screen
+        if self.gameState == "Game Over":
+            self.renderer.clear()
+            color = self.renderer.COLORS['fg']
+            
+            center_y = self.renderer.char_height // 2
+            
+            # Game over message
+            self.renderer.write_centered(center_y - 3, "GAME OVER", (255, 0, 0))
+            self.renderer.write_centered(center_y - 1, f"Final Score: {self.score}", color)
+            self.renderer.write_centered(center_y + 1, f"Stage Reached: {self.stage}", color)
+            
+            # Check if it's a new best score
+            best_score = self.game.save_system.get_stat("asteroids_best_score")
+            if self.score >= best_score and self.score > 0:
+                self.renderer.write_centered(center_y + 3, "NEW HIGH SCORE!", (0, 255, 0))
+            
+            self.renderer.write_centered(center_y + 5, "Press R to restart or ESC to quit", (150, 150, 150))
+            
+            # Render terminal overlay
+            self.renderer.render()
+            return  # Early return - don't render game entities
+        
+        # Normal gameplay rendering
         gameDisplay = self.renderer.screen
         
         # Reset display
@@ -669,25 +707,19 @@ class AsteroidsGameplayState(BaseState):
                 self.player_pieces.remove(f)
         
         # Draw player
-        if self.gameState != "Game Over":
-            if self.player_state == "Died":
-                if self.hyperspace == 0:
-                    if self.player_dying_delay == 0:
-                        if self.player_blink < 5:
-                            if self.player_blink == 0:
-                                self.player_blink = 10
-                            else:
-                                self.player.drawPlayer(gameDisplay)
-                        self.player_blink -= 1
-                    else:
-                        self.player_dying_delay -= 1
-            else:
-                self.player.drawPlayer(gameDisplay)
+        if self.player_state == "Died":
+            if self.hyperspace == 0:
+                if self.player_dying_delay == 0:
+                    if self.player_blink < 5:
+                        if self.player_blink == 0:
+                            self.player_blink = 10
+                        else:
+                            self.player.drawPlayer(gameDisplay)
+                    self.player_blink -= 1
+                else:
+                    self.player_dying_delay -= 1
         else:
-            drawText(gameDisplay, "Game Over", green, 
-                    self.display_width / 2, self.display_height / 2, 100)
-            drawText(gameDisplay, "Press \"R\" to restart!", green, 
-                    self.display_width / 2, self.display_height / 2 + 100, 50)
+            self.player.drawPlayer(gameDisplay)
         
         # Draw score
         drawText(gameDisplay, str(self.score), green, 60, 20, 40, False)

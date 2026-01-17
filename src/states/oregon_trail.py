@@ -189,7 +189,8 @@ class OregonTrailState(BaseState):
             return
 
         current_date = self.dates[self.d3]
-        self._add_message("")  # Add spacing between days
+        self._add_message("")
+        self._add_message("")
         self._add_message(f"MONDAY {current_date} 1847")
         
         # Check Supplies
@@ -317,7 +318,13 @@ class OregonTrailState(BaseState):
     
     def _continue_after_events(self):
         """Continue to next turn after events are processed"""
-        # Next turn
+        # Events happen during a turn (after movement), so after processing an event,
+        # we finish the current turn by advancing to the next day and starting a new turn.
+        # Clear the event flag to ensure we don't process events again
+        self.current_event = None
+        self.event_choice = None
+        
+        # Advance to next day
         self.d3 += 1
         if self.m >= 2040:
             self._add_message("YOU FINALLY ARRIVED AT OREGON CITY!")
@@ -325,6 +332,7 @@ class OregonTrailState(BaseState):
             self._add_message("PRESIDENT JAMES K. POLK SENDS HIS CONGRATULATIONS!")
             self.phase = "victory"
         else:
+            # Start a new turn (this will ask for turn options)
             self._process_main_turn()
     
     def _process_eating_choice(self, choice):
@@ -487,6 +495,10 @@ class OregonTrailState(BaseState):
     
     def _process_event_choice(self, choice):
         """Process choice for current event"""
+        # Don't process if no event is active
+        if not self.current_event:
+            return
+        
         if self.current_event == "riders":
             try:
                 t1 = int(choice)
@@ -735,7 +747,12 @@ class OregonTrailState(BaseState):
                             if self.fort_purchasing:
                                 self._process_fort_purchase(self.input_buffer)
                             elif self.current_event:
-                                self._process_event_choice(self.input_buffer)
+                                # Only process event choice if we have valid input
+                                if self.input_buffer.strip():
+                                    self._process_event_choice(self.input_buffer)
+                                else:
+                                    self._add_message("PLEASE ENTER A VALID CHOICE.")
+                                    self.input_buffer = ""
                             else:
                                 self._process_turn_choice(self.input_buffer)
                         elif self.phase == "shooting_mini":

@@ -910,6 +910,13 @@ class MainMenuState(BaseState):
             self.game.change_state(oregon_state)
             self._mark_secret_found("oregon_trail")
         
+        elif cmd_lower == "start asteroids":
+            # Launch Asteroids game
+            from src.states.asteroids_gameplay import AsteroidsGameplayState
+            asteroids_state = AsteroidsGameplayState(self.game, self)
+            self.game.change_state(asteroids_state)
+            self._mark_secret_found("asteroids_player")
+        
         elif cmd_lower in ["top", "htop"]:
             # Interactive process viewer
             from src.states.top_viewer import TopViewerState

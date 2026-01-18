@@ -44,7 +44,7 @@ class MainMenuState(BaseState):
         
         # Process manager
         from src.process_manager import ProcessManager
-        self.process_manager = ProcessManager()
+        self.process_manager = ProcessManager(save_system=game.save_system)
         
         # Konami code tracking
         self.konami_sequence = []

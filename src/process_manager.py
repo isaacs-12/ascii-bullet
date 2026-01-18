@@ -26,10 +26,15 @@ class Process:
 class ProcessManager:
     """Manages virtual processes"""
     
-    def __init__(self):
+    def __init__(self, save_system=None):
         self.processes = {}
         self.next_pid = 1000
-        self.virus_active = True
+        self.save_system = save_system
+        # Check if virus has been killed from save system
+        if save_system and save_system.is_virus_killed():
+            self.virus_active = False
+        else:
+            self.virus_active = True
         self.virus_discovered = False
         
         # Initialize system processes
@@ -138,7 +143,14 @@ class ProcessManager:
     
     def get_processes(self):
         """Get list of all processes sorted by CPU usage"""
-        return sorted(self.processes.values(), key=lambda p: p.cpu, reverse=True)
+        processes = list(self.processes.values())
+        
+        # Filter out virus processes if virus has been killed
+        if self.save_system and self.save_system.is_virus_killed():
+            # Remove any processes that are marked as the virus
+            processes = [p for p in processes if not (hasattr(p, 'is_virus') and p.is_virus)]
+        
+        return sorted(processes, key=lambda p: p.cpu, reverse=True)
     
     def get_process(self, pid):
         """Get a specific process by PID"""

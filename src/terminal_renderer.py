@@ -66,6 +66,15 @@ class TerminalRenderer:
         )
         pygame.display.set_caption("ASCII BULLET HELL")
         
+        # Set window icon
+        try:
+            icon_path = "src/assets/bllthll.png"
+            icon = pygame.image.load(icon_path)
+            pygame.display.set_icon(icon)
+        except (pygame.error, FileNotFoundError):
+            # If icon file doesn't exist, continue without it
+            pass
+        
         # Create buffer for terminal content
         self._resize_buffer(width, height)
         

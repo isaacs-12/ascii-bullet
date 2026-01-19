@@ -60,6 +60,7 @@ class MainMenuState(BaseState):
                 "totally alone, soyou can always use `help` as a reminder of what you have at",
                 "your disposal.Solutions to puzzles can usually be found multiple ways, but",
                 "as a tip, look around in the filesystem, and remember the tools we've given you.",
+                "...",
                 "If you'd rather play games, we give you one for each puzzle you solve...",
                 "And you can also use Python to help you solve puzzles too, though we've limited",
                 "its use here so as not to make it too powerful.",
@@ -399,7 +400,7 @@ class MainMenuState(BaseState):
             self.intro_waiting_for_key = False
             # Clear output and start typing the page
             self.output_lines = []
-            self.type_output(self.intro_text_pages[page_index], delay=30)
+            self.type_output(self.intro_text_pages[page_index], delay=15)
     
     def _show_main_screen(self):
         """Show the main screen (ASCII title and welcome)"""

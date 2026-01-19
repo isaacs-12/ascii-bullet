@@ -257,29 +257,6 @@ class VirtualFileSystem:
         """Get current working directory as string"""
         return '/' + '/'.join(self.current_path)
     
-    def list_directory(self):
-        """List contents of current directory"""
-        current_dir = self.get_current_directory()
-        contents = []
-        
-        # Special case: at root directory
-        if len(self.current_path) == 0:
-            # At root, directories are top-level keys
-            for dir_name in sorted(current_dir.keys()):
-                contents.append(f"{dir_name}/")
-        else:
-            # Add directories
-            if 'dirs' in current_dir:
-                for dir_name in sorted(current_dir['dirs'].keys()):
-                    contents.append(f"{dir_name}/")
-            
-            # Add files
-            if 'files' in current_dir:
-                for file_name in sorted(current_dir['files'].keys()):
-                    contents.append(file_name)
-        
-        return contents
-    
     def change_directory(self, path):
         """
         Change directory
@@ -737,6 +714,11 @@ class VirtualFileSystem:
         Returns:
             bool: True if permission is granted, False otherwise
         """
+        # If file doesn't exist, we can't check permissions
+        # Return False to be safe (caller should check file_exists first)
+        if not self.file_exists(filename):
+            return False
+        
         perms = self.get_permissions(filename)
         if perms is None:
             return False
@@ -865,7 +847,9 @@ class VirtualFileSystem:
         # Add default directories
         if 'dirs' in current_dir:
             for dir_name in sorted(current_dir['dirs'].keys()):
-                contents.append(f"{dir_name}/")
+                # Skip metadata keys that might have been incorrectly added as directories
+                if dir_name not in ('files', 'dirs'):
+                    contents.append(f"{dir_name}/")
         
         # Add user-created directories
         for dir_path in sorted(self.user_created_dirs):
@@ -912,12 +896,11 @@ class VirtualFileSystem:
         if full_path in self.user_deleted_files:
             return (False, f"File '{filename}' not found")
         
-        # Check read permission
-        if not self.check_permission(filename, 'r'):
-            return (False, f"Permission denied: '{filename}'")
-        
         # Check user-modified files first
         if full_path in self.user_modified_files:
+            # Check read permission for existing files
+            if not self.check_permission(filename, 'r'):
+                return (False, f"Permission denied: '{filename}'")
             content = self.user_modified_files[full_path]
             if isinstance(content, list):
                 return (True, content)
@@ -926,6 +909,9 @@ class VirtualFileSystem:
         
         # Check user-created files
         if full_path in self.user_created_files:
+            # Check read permission for existing files
+            if not self.check_permission(filename, 'r'):
+                return (False, f"Permission denied: '{filename}'")
             content = self.user_created_files[full_path]
             if isinstance(content, list):
                 return (True, content)
@@ -936,12 +922,16 @@ class VirtualFileSystem:
         current_dir = self.get_current_directory()
         
         if 'files' in current_dir and filename in current_dir['files']:
+            # Check read permission for existing default files
+            if not self.check_permission(filename, 'r'):
+                return (False, f"Permission denied: '{filename}'")
             content = current_dir['files'][filename]
             if isinstance(content, list):
                 return (True, content)
             else:
                 return (True, [content])
         else:
+            # File doesn't exist - don't check permissions for non-existent files
             return (False, f"cat: {filename}: No such file")
     
     # === Save/Load State ===

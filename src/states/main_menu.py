@@ -452,68 +452,22 @@ class MainMenuState(BaseState):
                 self.add_output("")
                 return True
             
-            # Simulate installation
-            self.type_output([
-                f"==> Downloading {package}...",
-                "######################################################################## 100.0%",
-                f"==> Installing {package}",
-                f"==> Pouring {package}--1.0.0.arm64_ventura.bottle.tar.gz",
-            ], delay=30)
-            
-            # Check if this is a recognized package and enable feature
-            installed = False
+            # Check if this is a recognized package first
             if package == "emacs":
-                self.add_output(f"🍺  {package} 29.4 is installed!")
-                self.add_output("")
-                self.add_output("GNU Emacs text editor installed!")
-                self.add_output("New command available: emacs <file>")
+                # Simulate installation (all messages go through type_output for proper ordering)
+                self.type_output([
+                    f"==> Downloading {package}...",
+                    "######################################################################## 100.0%",
+                    f"==> Installing {package}",
+                    f"==> Pouring {package}--1.0.0.arm64_ventura.bottle.tar.gz",
+                    "",
+                    "GNU Emacs text editor installed!",
+                    "New command available: emacs <file>",
+                ], delay=30)
+                
+                # Install package immediately (don't wait for typing)
                 self.game.save_system.install_package("emacs")
                 self._mark_secret_found("brew_emacs")
-                installed = True
-            elif package == "debug-mode":
-                self.add_output(f"🍺  {package} 1.0.0 is installed!")
-                self.add_output("")
-                self.add_output("Debug mode has been enabled!")
-                self.add_output("New command available: debug")
-                self.game.save_system.install_package("debug-mode")
-                self._mark_secret_found("brew_debug_mode")
-                installed = True
-            elif package == "time-warp":
-                self.add_output(f"🍺  {package} 1.0.0 is installed!")
-                self.add_output("")
-                self.add_output("Time manipulation tools installed!")
-                self.game.save_system.install_package("time-warp")
-                self._mark_secret_found("brew_time_warp")
-                installed = True
-            elif package == "power-tools":
-                self.add_output(f"🍺  {package} 1.0.0 is installed!")
-                self.add_output("")
-                self.add_output("Advanced system utilities installed!")
-                self.game.save_system.install_package("power-tools")
-                self._mark_secret_found("brew_power_tools")
-                installed = True
-            elif package == "radar-boost":
-                self.add_output(f"🍺  {package} 1.0.0 is installed!")
-                self.add_output("")
-                self.add_output("Proximity radar enhancements installed!")
-                self.game.save_system.install_package("radar-boost")
-                self._mark_secret_found("brew_radar_boost")
-                installed = True
-            elif package == "secret-scanner":
-                self.add_output(f"🍺  {package} 1.0.0 is installed!")
-                self.add_output("")
-                self.add_output("Hidden file scanner installed!")
-                self.add_output("Hint: Try scanning for hidden files in the filesystem...")
-                self.game.save_system.install_package("secret-scanner")
-                self._mark_secret_found("brew_secret_scanner")
-                installed = True
-            elif package == "blthll-extras":
-                self.add_output(f"🍺  {package} 1.0.0 is installed!")
-                self.add_output("")
-                self.add_output("Extra game features unlocked!")
-                self.game.save_system.install_package("blthll-extras")
-                self._mark_secret_found("brew_blthll_extras")
-                installed = True
             else:
                 self.add_output(f"Error: No available formula with the name \"{package}\"")
                 self.add_output("Try: brew update")
@@ -1083,7 +1037,7 @@ class MainMenuState(BaseState):
                     self.add_output(f"Error opening editor: {e}")
                     self.add_output("")
         
-        elif cmd_lower.startswith("emacs "):
+        elif cmd_lower == "emacs" or cmd_lower.startswith("emacs "):
             # Open emacs editor (requires brew install first)
             if not self.game.save_system.is_package_installed("emacs"):
                 self.add_output("emacs: command not found")

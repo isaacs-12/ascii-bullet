@@ -122,27 +122,39 @@ class EditorState(BaseState):
         
         # If we're waiting for the second key in C-x sequence
         if self.ctrl_x_pressed:
-            self.ctrl_x_pressed = False
+            # Check if this is a Ctrl combination
             if event.mod & pygame.KMOD_CTRL:
                 if event.key == pygame.K_s:
                     # C-x C-s: Save
+                    self.ctrl_x_pressed = False
                     self._save_file()
                     return
                 elif event.key == pygame.K_c:
                     # C-x C-c: Quit
+                    self.ctrl_x_pressed = False
                     if self.is_modified:
                         self.message = "Modified buffer! Save with C-x C-s first"
                     else:
                         self.game.change_state(self.previous_state, call_enter=False)
                     return
-            # If it wasn't a recognized C-x combination, cancel and continue processing
-            self.message = f"GNU Emacs: {self.filename} | C-x C-s=save, C-x C-c=quit"
-            # Important: don't return here, let the key be processed normally
-            # But also don't let it trigger C-x again, so just continue to normal key handling
-            # Skip the C-x check below by checking if we just cleared the flag
+                elif event.key == pygame.K_x:
+                    # C-x C-x: Cancel the sequence and start a new one (or just cancel)
+                    self.ctrl_x_pressed = False
+                    self.message = f"GNU Emacs: {self.filename} | C-x C-s=save, C-x C-c=quit"
+                    return
+                else:
+                    # Some other Ctrl key - cancel the sequence
+                    self.ctrl_x_pressed = False
+                    self.message = f"GNU Emacs: {self.filename} | C-x C-s=save, C-x C-c=quit"
+                    # Continue processing the key normally
+            else:
+                # Not a Ctrl key - cancel the C-x sequence
+                self.ctrl_x_pressed = False
+                self.message = f"GNU Emacs: {self.filename} | C-x C-s=save, C-x C-c=quit"
+                # Continue processing the key normally
         
-        # Check for Ctrl key combinations (but not if we just processed a failed C-x sequence)
-        elif event.mod & pygame.KMOD_CTRL:
+        # Check for Ctrl key combinations (only if not in a C-x sequence)
+        if not self.ctrl_x_pressed and event.mod & pygame.KMOD_CTRL:
             if event.key == pygame.K_x:
                 # C-x prefix - wait for next key
                 self.ctrl_x_pressed = True

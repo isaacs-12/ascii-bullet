@@ -32,11 +32,9 @@ class VirtualFileSystem:
         
         # File permissions: path -> permission string
         # Can be 3 characters (user only: "rwx") or 9 characters (user, group, other: "rwxrwxrwx")
-        # Default: "rw-" for most files, "rwx" for .py files
+        # Default: "rwx" for all files (user rwx)
+        # Permissions can be overridden in the filesystem structure or via chmod
         self.file_permissions = {}  # path -> permission string like "rwx" or "rwxrwxrwx"
-        
-        # Default permissions for specific files in the default filesystem
-        self.default_file_permissions = self._get_default_file_permissions()
         
         # File ownership system
         self.current_user = "pilot"  # Current user (can be "pilot" or "root")
@@ -46,24 +44,53 @@ class VirtualFileSystem:
         if saved_state:
             self._restore_state(saved_state)
     
-    def _get_default_file_permissions(self):
+    def _extract_file_content(self, file_entry):
         """
-        Define default permissions for specific files in the default filesystem.
-        Files not listed here will use extension-based defaults (.py = rwx, others = rw-)
+        Extract content from a file entry in the filesystem structure.
+        Supports both old format (list) and new format (dict with 'content').
         
+        Args:
+            file_entry: Either a list of strings or a dict with 'content' key
+            
         Returns:
-            dict: path -> permission string
+            list: File content as list of strings
         """
-        return {
-            # Example: A locked Python script that needs to be made executable
-            '/home/pilot/blthll/hello_world.py': 'rw-',
+        if isinstance(file_entry, list):
+            return file_entry
+        elif isinstance(file_entry, dict) and 'content' in file_entry:
+            content = file_entry['content']
+            if isinstance(content, list):
+                return content
+            else:
+                return [content]
+        else:
+            # Fallback for string content
+            return [file_entry]
+    
+    def _extract_file_permissions(self, file_entry, filename, full_path):
+        """
+        Extract permissions from a file entry in the filesystem structure.
+        Supports both old format (list, defaults to 'rwxrwxrwx') and new format (dict with 'permissions').
+        Permissions can be 3-char (user only) or 9-char (user, group, other) format.
+        
+        Args:
+            file_entry: Either a list of strings or a dict with 'content' and optionally 'permissions'
+            filename: Name of the file (for extension-based fallback, though we now default to rwxrwxrwx)
+            full_path: Full path to the file
             
-            # Example: Read-only files
-            '/home/pilot/blthll/data/highscores.txt': 'r--',
-            
-            # Root-owned system file (no permissions for pilot - needs sudo)
-            '/system/core/init.py': '---',
-        }
+        Returns:
+            str: Permission string like "rwx" (3 chars) or "rwxrwxrwx" (9 chars)
+        """
+        # New format: dict with permissions
+        if isinstance(file_entry, dict) and 'permissions' in file_entry:
+            perms = file_entry['permissions']
+            # If 3-char format, expand to 9-char by repeating for group and other
+            if len(perms) == 3:
+                return perms + perms + perms  # user, group, other all same
+            return perms
+        
+        # Old format (list) or new format without permissions: default to 'rwxrwxrwx'
+        return "rwxrwxrwx"
     
     def _get_default_file_owners(self):
         """
@@ -80,113 +107,160 @@ class VirtualFileSystem:
             '/system/core/init.py': 'root',
         }
     
+    def _make_file(self, name, content, permissions=None):
+        """
+        Create a file entry for the filesystem structure.
+        
+        Args:
+            name: Filename
+            content: File content (list of strings or single string)
+            permissions: Optional permission string (3 or 9 chars). Defaults to 'rwxrwxrwx'
+            
+        Returns:
+            dict: File entry with 'content' and optionally 'permissions'
+        """
+        if permissions is None:
+            permissions = 'rwxrwxrwx'
+        # Normalize content to list
+        if isinstance(content, str):
+            content = [content]
+        return {
+            'content': content,
+            'permissions': permissions
+        }
+    
+    def _make_dir(self, name, files=None, dirs=None, permissions=None):
+        """
+        Create a directory entry for the filesystem structure.
+        
+        Args:
+            name: Directory name
+            files: Optional dict of {filename: file_entry}
+            dirs: Optional dict of {dirname: dir_entry}
+            permissions: Optional permission string (3 or 9 chars). Defaults to 'rwxrwxrwx'
+            
+        Returns:
+            dict: Directory entry with 'dirs', 'files', and optionally 'permissions' keys
+        """
+        result = {}
+        if dirs:
+            result['dirs'] = dirs
+        if files:
+            result['files'] = files
+        if permissions is not None:
+            result['permissions'] = permissions
+        return result
+    
     def _get_default_filesystem(self):
         """Get the default read-only filesystem structure"""
-        return {
-            'home': {
-                'dirs': {
-                    'pilot': {
-                        'dirs': {
-                            'blthll': {
-                                'dirs': {
-                                    'data': {
-                                        'dirs': {
-                                            'secret': {
-                                                'dirs': {},
-                                                'files': {
-                                                    'cheat_codes.txt': [
-                                                        "SUPER SECRET CHEAT CODES",
-                                                        "=======================",
-                                                        "Up Up Down Down Left Right Left Right B A",
-                                                    ],
-                                                    'developer_notes.txt': [
-                                                        "TODO: Add more particle effects",
-                                                        "",
-                                                        "TODO: System running slow lately -- figure out why..."
-                                                    ]
-                                                }
-                                            },
-                                        'files': {
-                                            'highscores.txt': [
-                                                "DEV HIGH SCORES",
-                                                "===========",
-                                                "1. PLAYER1 - 999999",
-                                                "2. HACKER  - 123456",
-                                                "3. WALLY   - 000042"
-                                            ]
-                                        }
-                                    },
-                                },
-                                'files': {
-                                    'readme.txt': [
-                                        "Welcome to BLTHLL",
-                                        "",
-                                        "Hints:",
-                                        "- Try exploring with 'ls' and 'cd'",
-                                        "- Type 'help' to see available commands",
-                                    ],
-                                    'manual.txt': [
-                                        "SURVIVAL MANUAL",
-                                        "===============",
-                                        "Step 1: Don't get hit",
-                                        "Step 2: See step 1",
-                                        "Step 3: There is no step 3",
-                                        "",
-                                        "SYSTEM COMMANDS",
-                                        "===============",
-                                        "top - Interactive process monitor (q to quit)",
-                                        "ps - Static process list",
-                                        "kill <pid> - Terminate a process by PID",
-                                        "",
-                                        "Tip: Watch for processes with high CPU usage.",
-                                        "Something might be draining system resources..."
-                                    ],
-                                    'hello_world.py': [
-                                        "# Simple test script",
-                                        "print('Hello, World!')",
-                                    ]
-                                }
-                            }
-                        },
-                        'files': {}
-                    }
-                },
-                'files': {}
-            },
-            'etc': {
-                'dirs': {},
-                'files': {
-                    'motd': [
-                        "Welcome to BLTHLL Terminal System",
-                        "Unauthorized access will result in more bullets."
-                    ]
-                }
-            },
-            'system': {
-                'dirs': {
-                    'core': {
-                        'dirs': {},
-                        'files': {
-                            'init.py': [
-                                "#!/usr/bin/env python3",
-                                "# BLTHLL System Initialization Script",
-                                "# WARNING: This file is owned by root",
-                                "# Modifications require elevated privileges",
-                                "",
-                                "def initialize_system():",
-                                "    print('Initializing BLTHLL core systems...')",
-                                "    print('[OK] All systems operational')",
-                                "",
-                                "if __name__ == '__main__':",
-                                "    initialize_system()",
-                            ]
-                        }
-                    }
-                },
-                'files': {}
+        # Build filesystem using helper functions for clarity
+        secret_dir = self._make_dir('secret', files={
+            'cheat_codes.txt': self._make_file('cheat_codes.txt', [
+                "SUPER SECRET CHEAT CODES",
+                "=======================",
+                "Up Up Down Down Left Right Left Right B A",
+            ]),
+            'developer_notes.txt': self._make_file('developer_notes.txt', [
+                "TODO: Add more particle effects",
+                "",
+                "TODO: System running slow lately -- figure out why..."
+            ])
+        })
+        
+        data_dir = self._make_dir('data', 
+            dirs={'secret': secret_dir},
+            files={
+                'highscores.txt': self._make_file('highscores.txt', [
+                    "DEV HIGH SCORES",
+                    "===========",
+                    "1. PLAYER1 - 999999",
+                    "2. HACKER  - 123456",
+                    "3. WALLY   - 000042"
+                ], permissions='r--------')  # Read-only
             }
+        )
+        
+        blthll_dir = self._make_dir('blthll',
+            dirs={'data': data_dir},
+            files={
+                'readme.txt': self._make_file('readme.txt', [
+                    "Welcome to BLTHLL",
+                    "",
+                    "Hints:",
+                    "- Try exploring with 'ls' and 'cd'",
+                    "- Type 'help' to see available commands",
+                ]),
+                'manual.txt': self._make_file('manual.txt', [
+                    "SURVIVAL MANUAL",
+                    "===============",
+                    "Step 1: Don't get hit",
+                    "Step 2: See step 1",
+                    "Step 3: There is no step 3",
+                    "",
+                    "SYSTEM COMMANDS",
+                    "===============",
+                    "top - Interactive process monitor (q to quit)",
+                    "ps - Static process list",
+                    "kill <pid> - Terminate a process by PID",
+                    "",
+                    "Tip: Watch for processes with high CPU usage.",
+                    "Something might be draining system resources..."
+                ]),
+                'hello_world.py': self._make_file('hello_world.py', [
+                    "# Simple test script",
+                    "print('Hello, World!')",
+                ], permissions='rw-------')  # Read-write for user only
+            }
+        )
+        
+        pilot_dir = self._make_dir('pilot',
+            dirs={'blthll': blthll_dir},
+            files={}
+        )
+        
+        home_dir = self._make_dir('home',
+            dirs={'pilot': pilot_dir},
+            files={}
+        )
+        
+        etc_dir = self._make_dir('etc',
+            files={
+                'motd': self._make_file('motd', [
+                    "Welcome to BLTHLL Terminal System",
+                    "Unauthorized access will result in more bullets."
+                ])
+            }
+        )
+        
+        core_dir = self._make_dir('core',
+            files={
+                'init.py': self._make_file('init.py', [
+                    "#!/usr/bin/env python3",
+                    "# BLTHLL System Initialization Script",
+                    "# WARNING: This file is owned by root",
+                    "# Modifications require elevated privileges",
+                    "",
+                    "def initialize_system():",
+                    "    print('Initializing BLTHLL core systems...')",
+                    "    print('[OK] All systems operational')",
+                    "",
+                    "if __name__ == '__main__':",
+                    "    initialize_system()",
+                ], permissions='---------')  # No permissions
+            }
+        )
+        
+        system_dir = self._make_dir('system',
+            dirs={'core': core_dir},
+            files={}
+        )
+        
+        # Return top-level structure
+        return {
+            'home': home_dir,
+            'etc': etc_dir,
+            'system': system_dir
         }
-    }
     
     def get_current_directory(self):
         """Get the current directory object"""
@@ -285,13 +359,33 @@ class VirtualFileSystem:
             tuple: (success: bool, content: list of strings or error message)
         """
         current_dir = self.get_current_directory()
+        full_path = self.get_pwd() + '/' + filename
         
-        if 'files' in current_dir and filename in current_dir['files']:
-            content = current_dir['files'][filename]
+        # Check user-created/modified files first
+        if full_path in self.user_created_files:
+            content = self.user_created_files[full_path]
             if isinstance(content, list):
                 return (True, content)
             else:
                 return (True, [content])
+        elif full_path in self.user_modified_files:
+            content = self.user_modified_files[full_path]
+            if isinstance(content, list):
+                return (True, content)
+            else:
+                return (True, [content])
+        
+        # Check default files
+        if 'files' in current_dir and filename in current_dir['files']:
+            # Check if file has been deleted
+            if full_path in self.user_deleted_files:
+                return (False, f"cat: {filename}: No such file")
+            # Check read permission for existing default files
+            if not self.check_permission(filename, 'r'):
+                return (False, f"Permission denied: '{filename}'")
+            file_entry = current_dir['files'][filename]
+            content = self._extract_file_content(file_entry)
+            return (True, content)
         else:
             return (False, f"cat: {filename}: No such file")
     
@@ -513,33 +607,55 @@ class VirtualFileSystem:
     
     def get_permissions(self, filename):
         """
-        Get file permissions
+        Get file or directory permissions
         
         Args:
-            filename: Name of file
+            filename: Name of file or directory (may have trailing / for dirs)
             
         Returns:
-            str: Permission string like "rwx" (3 chars) or "rwxrwxrwx" (9 chars), or None if file doesn't exist
+            str: Permission string like "rwx" (3 chars) or "rwxrwxrwx" (9 chars), or None if file/dir doesn't exist
         """
-        full_path = self.get_pwd() + '/' + filename
+        # Normalize directory paths (remove trailing slash for lookup)
+        name = filename.rstrip('/')
+        full_path = self.get_pwd() + '/' + name
         
-        # Check if file exists
-        if not self.file_exists(filename):
+        # Check if it's a directory
+        is_dir = False
+        current_dir = self.get_current_directory()
+        if 'dirs' in current_dir and name in current_dir['dirs']:
+            is_dir = True
+        elif full_path + '/' in self.user_created_dirs:
+            is_dir = True
+        
+        # Check if file/directory exists
+        if not is_dir and not self.file_exists(filename):
             return None
         
-        # Return custom permissions if set by user (via chmod)
+        # Return custom permissions if set by user (via chmod) - highest priority
         if full_path in self.file_permissions:
-            return self.file_permissions[full_path]
+            perms = self.file_permissions[full_path]
+            # Expand 3-char to 9-char if needed
+            if len(perms) == 3:
+                return perms + perms + perms
+            return perms
         
-        # Check for default permissions defined for this specific file
-        if full_path in self.default_file_permissions:
-            return self.default_file_permissions[full_path]
+        # For directories, check default filesystem structure for permissions
+        if is_dir and 'dirs' in current_dir and name in current_dir['dirs']:
+            dir_entry = current_dir['dirs'][name]
+            if isinstance(dir_entry, dict) and 'permissions' in dir_entry:
+                perms = dir_entry['permissions']
+                # Expand 3-char to 9-char if needed
+                if len(perms) == 3:
+                    return perms + perms + perms
+                return perms
         
-        # Fall back to extension-based defaults
-        if filename.endswith('.py'):
-            return "rwx"  # Python files are executable by default
-        else:
-            return "rw-"  # Regular files are read-write by default
+        # Check default filesystem structure for file permissions
+        if not is_dir and 'files' in current_dir and name in current_dir['files']:
+            file_entry = current_dir['files'][name]
+            return self._extract_file_permissions(file_entry, name, full_path)
+        
+        # For user-created/modified files and directories, default to 'rwxrwxrwx'
+        return "rwxrwxrwx"
     
     def get_file_owner(self, filename):
         """
@@ -580,19 +696,28 @@ class VirtualFileSystem:
     
     def set_permissions(self, filename, permissions):
         """
-        Set file permissions
+        Set file or directory permissions (chmod)
         
         Args:
-            filename: Name of file
-            permissions: Permission string like "rwx", "rw-", "r--", or octal like "755"
+            filename: Name of file or directory (may have trailing / for dirs)
+            permissions: Permission string or octal mode
             
         Returns:
             tuple: (success, error_message or None)
         """
-        full_path = self.get_pwd() + '/' + filename
+        # Normalize directory paths (remove trailing slash for storage)
+        name = filename.rstrip('/')
+        full_path = self.get_pwd() + '/' + name
         
-        # Check if file exists
-        if not self.file_exists(filename):
+        # Check if file or directory exists
+        current_dir = self.get_current_directory()
+        is_dir = False
+        if 'dirs' in current_dir and name in current_dir['dirs']:
+            is_dir = True
+        elif full_path + '/' in self.user_created_dirs:
+            is_dir = True
+        
+        if not is_dir and not self.file_exists(filename):
             return (False, f"chmod: cannot access '{filename}': No such file or directory")
         
         # Check ownership (only root or owner can chmod)
@@ -773,17 +898,44 @@ class VirtualFileSystem:
         is_default = (source_full not in self.user_created_files and 
                      source_full not in self.user_modified_files)
         
+        # Get source permissions before moving
+        source_permissions = None
+        if is_default:
+            # Get permissions from default filesystem structure
+            source_dir = self.get_current_directory()
+            if 'files' in source_dir and source in source_dir['files']:
+                file_entry = source_dir['files'][source]
+                source_permissions = self._extract_file_permissions(file_entry, source, source_full)
+        elif source_full in self.file_permissions:
+            # Get user-set permissions
+            source_permissions = self.file_permissions[source_full]
+        else:
+            # Default permissions for user-created files
+            source_permissions = "rwxrwxrwx"
+        
         # Perform the move
         if source_full in self.user_created_files:
             del self.user_created_files[source_full]
+            # Preserve permissions if they were set
+            if source_full in self.file_permissions:
+                source_permissions = self.file_permissions[source_full]
+                del self.file_permissions[source_full]
         elif source_full in self.user_modified_files:
             del self.user_modified_files[source_full]
+            # Preserve permissions if they were set
+            if source_full in self.file_permissions:
+                source_permissions = self.file_permissions[source_full]
+                del self.file_permissions[source_full]
         elif is_default:
             # Mark default file as deleted from source location
             self.user_deleted_files.add(source_full)
         
         # Create file at destination
         self.user_created_files[dest_full] = content
+        
+        # Preserve permissions at destination (unless they're the default 'rwxrwxrwx')
+        if source_permissions and source_permissions != "rwxrwxrwx":
+            self.file_permissions[dest_full] = source_permissions
         
         return (True, None)
     
@@ -878,14 +1030,15 @@ class VirtualFileSystem:
         current_dir = self.get_current_directory()
         
         if 'files' in current_dir and filename in current_dir['files']:
+            # Check if file has been deleted
+            if full_path in self.user_deleted_files:
+                return (False, f"cat: {filename}: No such file")
             # Check read permission for existing default files
             if not self.check_permission(filename, 'r'):
                 return (False, f"Permission denied: '{filename}'")
-            content = current_dir['files'][filename]
-            if isinstance(content, list):
-                return (True, content)
-            else:
-                return (True, [content])
+            file_entry = current_dir['files'][filename]
+            content = self._extract_file_content(file_entry)
+            return (True, content)
         else:
             # File doesn't exist - don't check permissions for non-existent files
             return (False, f"cat: {filename}: No such file")
@@ -966,13 +1119,12 @@ class VirtualFileSystem:
         def traverse(node, current_path):
             """Recursively traverse the filesystem tree"""
             if 'files' in node:
-                for filename, content in node['files'].items():
+                for filename, file_entry in node['files'].items():
                     full_path = current_path + '/' + filename
+                    # Extract content from file entry (handles both list and dict formats)
+                    content = self._extract_file_content(file_entry)
                     # Normalize content for comparison
-                    if isinstance(content, list):
-                        content_key = tuple(content)
-                    else:
-                        content_key = (content,)
+                    content_key = tuple(content)
                     
                     if content_key not in file_map:
                         file_map[content_key] = []
@@ -1084,6 +1236,9 @@ class VirtualFileSystem:
             
             # Remove from user_created_files
             del self.user_created_files[file_path]
+            # Remove permissions if set
+            if file_path in self.file_permissions:
+                del self.file_permissions[file_path]
         
         # 3. Restore deleted default files from this directory
         for filename, full_path in default_files:
@@ -1098,6 +1253,9 @@ class VirtualFileSystem:
         
         for file_path in modified_to_remove:
             del self.user_modified_files[file_path]
+            # Remove permissions if set
+            if file_path in self.file_permissions:
+                del self.file_permissions[file_path]
         
         # 5. Remove user-created directories in this directory
         dirs_to_remove = []
@@ -1107,6 +1265,20 @@ class VirtualFileSystem:
         
         for dir_path_item in dirs_to_remove:
             self.user_created_dirs.remove(dir_path_item)
+            # Remove directory permissions if set (without trailing slash)
+            dir_path_no_slash = dir_path_item.rstrip('/')
+            if dir_path_no_slash in self.file_permissions:
+                del self.file_permissions[dir_path_no_slash]
+        
+        # 6. Remove permissions for files that were removed from user_created_files
+        # (These were already removed above, but we need to clean up their permissions)
+        perms_to_remove = []
+        for perm_path in list(self.file_permissions.keys()):
+            if perm_path.startswith(dir_path + '/'):
+                perms_to_remove.append(perm_path)
+        
+        for perm_path in perms_to_remove:
+            del self.file_permissions[perm_path]
         
         return (True, None)
 

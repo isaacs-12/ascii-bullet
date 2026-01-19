@@ -377,6 +377,14 @@ class MinesweeperState(BaseState):
             msg_x = (actual_width - msg_surface2.get_width()) // 2
             self.renderer.screen.blit(msg_surface2, (msg_x, msg_y + self.renderer.char_pixel_height))
         
+        # Display controls at the bottom (only when playing)
+        if self.game_state == "playing":
+            controls_y = (current_char_height - 1) * self.renderer.char_pixel_height + self.renderer.title_bar_height + self.renderer.frame_thickness
+            controls_text = "Click: Reveal | Shift+Click: Flag | ESC: Quit"
+            controls_surface = self.renderer.font.render(controls_text, True, (150, 150, 150))
+            controls_x = (actual_width - controls_surface.get_width()) // 2
+            self.renderer.screen.blit(controls_surface, (controls_x, controls_y))
+        
         # Update display (single flip at the end)
         pygame.display.flip()
     

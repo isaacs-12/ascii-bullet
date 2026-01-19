@@ -88,7 +88,10 @@ class SaveSystem:
             },
             
             # Filesystem state
-            "filesystem": None  # Will store user modifications
+            "filesystem": None,  # Will store user modifications
+            
+            # Command history (only commands, not outputs)
+            "command_history": []  # List of command strings
         }
     
     def save(self):
@@ -474,5 +477,33 @@ class SaveSystem:
         """Clear saved Oregon Trail game state"""
         if "oregon_trail" in self.data:
             del self.data["oregon_trail"]
+            self.save()
+    
+    # Command History
+    def get_command_history(self, max_items=100):
+        """
+        Get saved command history
+        
+        Args:
+            max_items: Maximum number of commands to return (most recent)
+            
+        Returns:
+            List of command strings
+        """
+        history = self.data.get("command_history", [])
+        # Return most recent items, limited to max_items
+        return history[-max_items:] if len(history) > max_items else history
+    
+    def save_command_history(self, command_history, max_items=100):
+        """
+        Save command history (only commands, not outputs)
+        
+        Args:
+            command_history: List of command strings
+            max_items: Maximum number of commands to save
+        """
+        # Only save commands, limit to most recent max_items
+        commands_to_save = command_history[-max_items:] if len(command_history) > max_items else command_history
+        self.data["command_history"] = commands_to_save
         self.save()
 

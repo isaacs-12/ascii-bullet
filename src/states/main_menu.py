@@ -30,8 +30,9 @@ class MainMenuState(BaseState):
         self.boot_timer = 0
         self.boot_delay = 200  # ms between boot lines
         
-        # Command history
-        self.command_history = []
+        # Command history (load from save)
+        saved_history = game.save_system.get_command_history()
+        self.command_history = saved_history.copy() if saved_history else []
         self.history_index = -1
         
         # Easter egg tracking (load from save)
@@ -560,6 +561,10 @@ class MainMenuState(BaseState):
         # Add to history
         self.command_history.append(command)
         
+        # Save command history periodically (every 10 commands to avoid too many writes)
+        if len(self.command_history) % 10 == 0:
+            self.game.save_system.save_command_history(self.command_history)
+        
         # Show command in output
         self.add_output(f"{self.get_prompt()}{command}")
         
@@ -584,6 +589,8 @@ class MainMenuState(BaseState):
             self.add_output("")
         
         elif cmd_lower in ["quit", "exit", "q"]:
+            # Save command history before quitting
+            self.game.save_system.save_command_history(self.command_history)
             self.add_output("Shutting down...")
             self.game.running = False
         

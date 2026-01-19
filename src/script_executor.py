@@ -11,7 +11,11 @@ from RestrictedPython.Guards import (
 from RestrictedPython.PrintCollector import PrintCollector
 import signal
 import sys
-from io import StringIO
+
+
+class ScriptTimeoutError(Exception):
+    """Exception raised when script execution times out"""
+    pass
 
 
 class VirtualFile:
@@ -134,6 +138,10 @@ class VirtualFile:
         
         # Split by newlines and add lines
         lines = s.split('\n')
+        # Remove empty trailing line if string ended with \n
+        if lines and lines[-1] == '':
+            lines = lines[:-1]
+        
         for i, line in enumerate(lines):
             if i == 0 and self.append_mode and self._position < len(self._content):
                 # Append to last line in append mode
@@ -222,13 +230,179 @@ class VirtualFile:
         return line
 
 
+class StatResult:
+    """os.stat_result-like object for file statistics"""
+    def __init__(self, size, permissions, owner, exists):
+        self.st_size = size  # Size in bytes
+        self.st_mode = permissions  # Permission string (e.g., 'rwxrwxrwx')
+        self.st_uid = owner  # Owner name ('pilot' or 'root')
+        self.exists = exists  # Whether file exists
+    
+    def __repr__(self):
+        return f"os.stat_result(st_size={self.st_size}, st_mode='{self.st_mode}', st_uid='{self.st_uid}')"
+
+
+class VirtualOS:
+    """Simulated os module for the virtual filesystem"""
+    
+    def __init__(self, filesystem, save_callback=None):
+        self.filesystem = filesystem
+        self._save_callback = save_callback
+        
+        # Initialize os.path submodule
+        self.path = VirtualOSPath(filesystem)
+        
+        # OS Constants
+        self.F_OK = 0
+        self.R_OK = 4
+        self.W_OK = 2
+        self.X_OK = 1
+        self.name = 'posix'
+        self.sep = '/'
+        self.linesep = '\n'
+        
+        # Initialize os.path submodule
+        self.path = VirtualOSPath(filesystem)
+        
+        # OS Constants
+        self.F_OK = 0
+        self.R_OK = 4
+        self.W_OK = 2
+        self.X_OK = 1
+        self.name = 'posix'
+        self.sep = '/'
+        self.linesep = '\n'
+    
+    def getcwd(self):
+        """Get current working directory"""
+        return self.filesystem.get_pwd()
+    
+    def listdir(self, path=None):
+        """List directory contents"""
+        if path is None:
+            return self.filesystem.list_directory()
+        # For now, only support current directory
+        # Could extend to support path parameter
+        return self.filesystem.list_directory()
+    
+    def stat(self, path):
+        """Get file statistics"""
+        if not self.filesystem.file_exists(path):
+            raise FileNotFoundError(f"[Errno 2] No such file or directory: '{path}'")
+        
+        # Calculate size
+        success, content = self.filesystem.read_file(path)
+        if not success:
+            size = 0
+        elif isinstance(content, list):
+            size = sum(len(line) + 1 for line in content)
+        else:
+            size = len(content)
+        
+        permissions = self.filesystem.get_permissions(path)
+        owner = self.filesystem.get_file_owner(path)
+        
+        return StatResult(size, permissions, owner, True)
+    
+    def access(self, path, mode):
+        """
+        Check file access permissions
+        
+        Args:
+            path: File path
+            mode: Access mode (os.F_OK, os.R_OK, os.W_OK, os.X_OK)
+        """
+        if not self.filesystem.file_exists(path):
+            return False
+        
+        # Map mode constants to permission checks
+        if mode == 0:  # F_OK - existence
+            return True
+        elif mode == 4:  # R_OK - read
+            return self.filesystem.check_permission(path, 'r')
+        elif mode == 2:  # W_OK - write
+            return self.filesystem.check_permission(path, 'w')
+        elif mode == 1:  # X_OK - execute
+            return self.filesystem.check_permission(path, 'x')
+        else:
+            # Multiple modes (bitwise OR)
+            result = True
+            if mode & 4:  # R_OK
+                result = result and self.filesystem.check_permission(path, 'r')
+            if mode & 2:  # W_OK
+                result = result and self.filesystem.check_permission(path, 'w')
+            if mode & 1:  # X_OK
+                result = result and self.filesystem.check_permission(path, 'x')
+            return result
+    
+    def remove(self, path):
+        """Remove (delete) a file"""
+        # Check if file exists first
+        if not self.filesystem.file_exists(path):
+            raise FileNotFoundError(f"[Errno 2] No such file or directory: '{path}'")
+        # Then try to delete
+        success, error = self.filesystem.delete_file(path)
+        if not success:
+            raise OSError(error)
+        if self._save_callback:
+            self._save_callback()
+    
+    def unlink(self, path):
+        """Alias for remove()"""
+        self.remove(path)
+
+
+class VirtualOSPath:
+    """Simulated os.path module for the virtual filesystem"""
+    
+    def __init__(self, filesystem):
+        self.filesystem = filesystem
+    
+    def exists(self, path):
+        """Check if path exists"""
+        return self.filesystem.file_exists(path)
+    
+    def getsize(self, path):
+        """Get file size in bytes"""
+        if not self.filesystem.file_exists(path):
+            raise FileNotFoundError(f"[Errno 2] No such file or directory: '{path}'")
+        # Calculate size
+        success, content = self.filesystem.read_file(path)
+        if not success:
+            return 0
+        elif isinstance(content, list):
+            return sum(len(line) + 1 for line in content)
+        else:
+            return len(content)
+    
+    def isfile(self, path):
+        """Check if path is a file (not a directory)"""
+        if not self.filesystem.file_exists(path):
+            return False
+        # In our filesystem, directories end with '/'
+        contents = self.filesystem.list_directory()
+        return path in contents and not path.endswith('/')
+    
+    def isdir(self, path):
+        """Check if path is a directory"""
+        # In our filesystem, directories end with '/'
+        # Check if the path (with or without trailing slash) exists as a directory
+        if path.endswith('/'):
+            dir_path = path
+        else:
+            dir_path = path + '/'
+        
+        contents = self.filesystem.list_directory()
+        return dir_path in contents
+
+
 class ScriptTimeoutError(Exception):
     """Raised when script execution times out"""
     pass
 
 
 class GameScriptAPI:
-    """Safe API that scripts can use to interact with the game"""
+    """Minimal API wrapper for filesystem access (used internally)"""
     
     def __init__(self, filesystem, output_callback, save_callback=None):
         """
@@ -242,167 +416,6 @@ class GameScriptAPI:
         self.filesystem = filesystem
         self._output = output_callback
         self._save_callback = save_callback
-    
-    def read_file(self, filename):
-        """
-        Read a file from the virtual filesystem
-        
-        Args:
-            filename: Name of file to read
-            
-        Returns:
-            List of lines if successful, None if not found
-        """
-        success, content = self.filesystem.read_file(filename)
-        if success:
-            return content
-        return None
-    
-    def list_files(self):
-        """
-        List files in current directory
-        
-        Returns:
-            List of filenames and directories
-        """
-        return self.filesystem.list_directory()
-    
-    def get_pwd(self):
-        """Get current working directory"""
-        return self.filesystem.get_pwd()
-    
-    def file_exists(self, filename):
-        """Check if a file exists"""
-        return self.filesystem.file_exists(filename)
-    
-    def get_file_size(self, filename):
-        """
-        Get the size of a file in bytes
-        
-        Args:
-            filename: Name of file
-            
-        Returns:
-            int: File size in bytes, or None if file doesn't exist
-        """
-        success, content = self.filesystem.read_file(filename)
-        if not success:
-            return None
-        
-        # Calculate size: sum of line lengths + newlines
-        if isinstance(content, list):
-            # Each line + newline character
-            return sum(len(line) + 1 for line in content)
-        else:
-            return len(content)
-    
-    def stat(self, filename):
-        """
-        Get file statistics/metadata
-        
-        Args:
-            filename: Name of file
-            
-        Returns:
-            dict with keys: size, permissions, owner, exists
-            Returns None if file doesn't exist
-        """
-        if not self.filesystem.file_exists(filename):
-            return None
-        
-        size = self.get_file_size(filename)
-        permissions = self.filesystem.get_permissions(filename)
-        owner = self.filesystem.get_file_owner(filename)
-        
-        return {
-            'size': size,  # Size in bytes
-            'size_bits': size * 8,  # Size in bits
-            'permissions': permissions,
-            'owner': owner,
-            'exists': True
-        }
-    
-    def get_permissions(self, filename):
-        """
-        Get file permissions string
-        
-        Args:
-            filename: Name of file
-            
-        Returns:
-            str: Permission string (e.g., "rwx" or "rwxrwxrwx"), or None if not found
-        """
-        if not self.filesystem.file_exists(filename):
-            return None
-        return self.filesystem.get_permissions(filename)
-    
-    def get_owner(self, filename):
-        """
-        Get file owner
-        
-        Args:
-            filename: Name of file
-            
-        Returns:
-            str: Owner name ("pilot" or "root"), or None if not found
-        """
-        if not self.filesystem.file_exists(filename):
-            return None
-        return self.filesystem.get_file_owner(filename)
-    
-    def create_file(self, filename, content=""):
-        """
-        Create a new file in the current directory
-        
-        Args:
-            filename: Name of file to create
-            content: Initial content (string or list of strings)
-            
-        Returns:
-            tuple: (success: bool, error_message: str or None)
-            If success is True, error_message is None
-            If success is False, error_message contains the error
-        """
-        success, error = self.filesystem.create_file(filename, content)
-        if success and self._save_callback:
-            self._save_callback()
-        return (success, error)
-    
-    def write_file(self, filename, content, append=False):
-        """
-        Write content to a file (overwrites or appends)
-        
-        Args:
-            filename: Name of file
-            content: Content to write (string or list of strings)
-            append: If True, append instead of overwrite (default False)
-            
-        Returns:
-            tuple: (success: bool, error_message: str or None)
-            If success is True, error_message is None
-            If success is False, error_message contains the error
-        """
-        success, error = self.filesystem.write_file(filename, content, append=append)
-        if success and self._save_callback:
-            self._save_callback()
-        return (success, error)
-    
-    def delete_file(self, filename):
-        """
-        Delete a file from the current directory
-        
-        Args:
-            filename: Name of file to delete
-            
-        Returns:
-            tuple: (success: bool, error_message: str or None)
-            If success is True, error_message is None
-            If success is False, error_message contains the error
-        """
-        success, error = self.filesystem.delete_file(filename)
-        if success and self._save_callback:
-            self._save_callback()
-        return (success, error)
 
 
 class ScriptExecutor:
@@ -417,6 +430,7 @@ class ScriptExecutor:
     
     def _timeout_handler(self, signum, frame):
         """Handle script execution timeout"""
+        raise ScriptTimeoutError("Script execution timed out")
         raise ScriptTimeoutError("Script execution timed out (5 second limit)")
     
     def _get_safe_globals(self, game_api):
@@ -449,65 +463,67 @@ class ScriptExecutor:
                 game_api._save_callback
             )
         
-        # Start with safe builtins
+        # Create the VirtualOS instance (which includes path submodule)
+        virtual_os = VirtualOS(game_api.filesystem, game_api._save_callback)
+        
+        # Define a robust custom getattr that explicitly allows our virtual classes
+        def custom_getattr(obj, name):
+            """
+            Allow access to attributes of our specific Virtual classes.
+            For everything else, delegate to RestrictedPython's safer_getattr.
+            """
+            # Allow access to attributes of VirtualOS, VirtualOSPath, VirtualFile, and StatResult
+            # We explicitly check the type to prevent access to unauthorized objects
+            if isinstance(obj, (VirtualOS, VirtualOSPath, VirtualFile, StatResult)):
+                return getattr(obj, name)
+                
+            return safer_getattr(obj, name)
+        
+        # Construct the safe globals first
         safe_globals = {
             '__builtins__': {
-                # Type constructors
-                'int': int,
-                'float': float,
-                'str': str,
-                'bool': bool,
-                'list': list,
-                'dict': dict,
-                'tuple': tuple,
-                'set': set,
-                
-                # Common functions
-                'len': len,
-                'range': range,
-                'enumerate': enumerate,
-                'zip': zip,
-                'map': map,
-                'filter': filter,
-                'sorted': sorted,
-                'sum': sum,
-                'min': min,
-                'max': max,
-                'abs': abs,
-                'round': round,
-                
-                # String methods
-                'chr': chr,
-                'ord': ord,
-                
-                # Other safe operations
-                'reversed': reversed,
-                'any': any,
-                'all': all,
-                
-                # PrintCollector for print() support
-                '_print_': PrintCollector,
-                '_getiter_': guarded_iter_unpack_sequence,
+                # Use safe_builtins as base and extend it
+                **safe_builtins,
                 
                 # Safe file I/O
                 'open': safe_open,
                 
-                # Prevent access to dangerous builtins
-                '__import__': None,
-                'exec': None,
-                'eval': None,
-                'compile': None,
-                '__builtins__': None,
+                # Exception types
+                'FileNotFoundError': FileNotFoundError,
+                'FileExistsError': FileExistsError,
+                'OSError': OSError,
+                'PermissionError': PermissionError,
+                'ValueError': ValueError,
+                'TypeError': TypeError,
             },
             
-            # Required guards for RestrictedPython
-            '_getattr_': safer_getattr,
-            '_iter_unpack_sequence_': guarded_iter_unpack_sequence,
-            '_getiter_': iter,  # Use built-in iter
+            # The Magic Sauce: Inject our custom attribute guard
+            '_getattr_': custom_getattr,
             
-            # Game API
-            'game': game_api,
+            # Standard RP guards
+            '_iter_unpack_sequence_': guarded_iter_unpack_sequence,
+            '_getiter_': iter,
+            '_print_': PrintCollector,  # Helper for print statements
+            
+            # Expose our VirtualOS instance as 'os'
+            'os': virtual_os,
         }
+        
+        # Create a safe __import__ that handles both 'os' and 'os.path'
+        # When Python does 'import os.path', it calls __import__('os.path', ...)
+        # We need to return the os module, and Python will then access .path from it
+        def safe_import(name, globals=None, locals=None, fromlist=(), level=0):
+            """Safe import that only allows importing modules from safe_globals"""
+            # Handle 'os' module (including 'import os.path' which first imports 'os')
+            if name == 'os' or name == 'os.path':
+                return safe_globals['os']
+            # Check if it's in our safe globals
+            if name in safe_globals:
+                return safe_globals[name]
+            raise ImportError(f"No module named '{name}'")
+        
+        # Add safe __import__ to builtins
+        safe_globals['__builtins__']['__import__'] = safe_import
         
         return safe_globals
     
@@ -549,9 +565,11 @@ class ScriptExecutor:
                 byte_code = compile_result.code
             else:
                 byte_code = compile_result
-            
+                
         except SyntaxError as e:
             return (False, f"Syntax error: {e}")
+        except Exception as e:
+            return (False, f"Compilation Error: {e}")
         
         # Prepare execution environment
         safe_globals = self._get_safe_globals(game_api)
@@ -562,44 +580,34 @@ class ScriptExecutor:
             old_handler = signal.signal(signal.SIGALRM, self._timeout_handler)
             signal.alarm(self.MAX_EXECUTION_TIME)
         
-        # Capture stdout
-        old_stdout = sys.stdout
-        sys.stdout = StringIO()
-        
         try:
-            # Execute the compiled code
+            # Execute the code
             exec(byte_code, safe_globals, safe_locals)
             
-            # Get printed output from PrintCollector
-            if '_print' in safe_locals:
-                print_collector = safe_locals['_print']
-                if hasattr(print_collector, '__call__'):
-                    # Get the printed text
-                    printed_text = print_collector()
-                    if printed_text:
-                        for line in printed_text.rstrip('\n').split('\n'):
+            # Retrieve printed text
+            # RestrictedPython accumulates print output in a local variable usually named '_print'
+            # which is an instance of PrintCollector.
+            print_collector = safe_locals.get('_print')
+            if print_collector:
+                output = print_collector()  # Calling it retrieves the string
+                if output:
+                    for line in output.strip().split('\n'):
+                        if line.strip():  # Only process non-empty lines
                             output_callback(line)
-            
-            # Also capture stdout (fallback)
-            printed_output = sys.stdout.getvalue()
-            if printed_output:
-                for line in printed_output.rstrip('\n').split('\n'):
-                    output_callback(line)
             
             return (True, None)
             
         except ScriptTimeoutError as e:
             return (False, str(e))
-        
+        except SystemExit:
+            return (False, "Script attempted to exit")
         except Exception as e:
-            # Catch any runtime errors
-            return (False, f"Runtime error: {type(e).__name__}: {e}")
-        
+            # Helpful for debugging: print the traceback if needed,
+            # but for users just return the error
+            error_type = type(e).__name__
+            error_msg = str(e)
+            return (False, f"Runtime error: {error_type}: {error_msg}")
         finally:
-            # Restore stdout
-            sys.stdout = old_stdout
-            
-            # Cancel timeout
             if hasattr(signal, 'SIGALRM'):
                 signal.alarm(0)
                 signal.signal(signal.SIGALRM, old_handler)

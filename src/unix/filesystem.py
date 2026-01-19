@@ -59,7 +59,6 @@ class VirtualFileSystem:
             '/home/pilot/blthll/hello_world.py': 'rw-',
             
             # Example: Read-only files
-            '/home/pilot/blthll/data/bullets.dat': 'r--',
             '/home/pilot/blthll/data/highscores.txt': 'r--',
             
             # Root-owned system file (no permissions for pilot - needs sudo)
@@ -90,23 +89,6 @@ class VirtualFileSystem:
                         'dirs': {
                             'blthll': {
                                 'dirs': {
-                                    'weapons': {
-                                        'dirs': {},
-                                        'files': {
-                                            'laser.txt': [
-                                                "LASER CANNON v2.4",
-                                                "Damage: High",
-                                                "Fire Rate: Fast",
-                                                "Special: Piercing shots"
-                                            ],
-                                            'missile.txt': [
-                                                "HOMING MISSILES",
-                                                "Damage: Very High",
-                                                "Fire Rate: Slow",
-                                                "Special: Tracks enemies"
-                                            ]
-                                        }
-                                    },
                                     'data': {
                                         'dirs': {
                                             'secret': {
@@ -116,8 +98,6 @@ class VirtualFileSystem:
                                                         "SUPER SECRET CHEAT CODES",
                                                         "=======================",
                                                         "Up Up Down Down Left Right Left Right B A",
-                                                        "Just kidding, no cheats here!",
-                                                        "Git gud at dodging bullets instead."
                                                     ],
                                                     'developer_notes.txt': [
                                                         "TODO: Add more particle effects",
@@ -127,50 +107,23 @@ class VirtualFileSystem:
                                                 }
                                             },
                                         'files': {
-                                            'bullets.dat': [
-                                                "=== BULLET DATA ===",
-                                                "* . o O @ # + x",
-                                                "",
-                                                "Type: Standard",
-                                                "Speed: Variable",
-                                                "Pattern: Spiral, Linear, Radial"
-                                            ],
                                             'highscores.txt': [
                                                 "DEV HIGH SCORES",
                                                 "===========",
                                                 "1. PLAYER1 - 999999",
                                                 "2. HACKER  - 123456",
-                                                "3. WALLY   - 00042"
+                                                "3. WALLY   - 000042"
                                             ]
                                         }
                                     },
-                                    'certain_death': {
-                                        'dirs': {},
-                                        'files': {
-                                            'warning.txt': [
-                                                "!!! WARNING !!!",
-                                                "",
-                                                "You are entering the CERTAIN DEATH zone.",
-                                                "Bullets here are UNAVOIDABLE.",
-                                                "Turn back while you still can!",
-                                                "",
-                                                "...or don't. Your funeral. [RIP]"
-                                            ]
-                                        }
-                                    }
                                 },
                                 'files': {
                                     'readme.txt': [
-                                        "Welcome to BLTHLL (Bullet Hell)",
-                                        "",
-                                        "You are a pilot trying to survive.",
-                                        "Good luck. You'll need it.",
+                                        "Welcome to BLTHLL",
                                         "",
                                         "Hints:",
                                         "- Try exploring with 'ls' and 'cd'",
                                         "- Type 'help' to see available commands",
-                                        "- Check 'data/secret/' for hidden files",
-                                        "- Use 'top' to monitor system health"
                                     ],
                                     'manual.txt': [
                                         "SURVIVAL MANUAL",
@@ -526,6 +479,9 @@ class VirtualFileSystem:
             return (False, f"Directory '{dirname}' already exists")
         
         full_path = self.get_pwd() + '/' + dirname
+        # Ensure trailing slash for directories
+        if not full_path.endswith('/'):
+            full_path = full_path + '/'
         if full_path in self.user_created_dirs:
             return (False, f"Directory '{dirname}' already exists")
         
@@ -999,4 +955,158 @@ class VirtualFileSystem:
         
         # Restore user-created files to blthll
         self.user_created_files = saved_files
+    
+    def _get_default_file_paths(self):
+        """
+        Build a map of all default files and their paths.
+        Returns: dict mapping (normalized content) -> list of paths where that file exists
+        """
+        file_map = {}
+        
+        def traverse(node, current_path):
+            """Recursively traverse the filesystem tree"""
+            if 'files' in node:
+                for filename, content in node['files'].items():
+                    full_path = current_path + '/' + filename
+                    # Normalize content for comparison
+                    if isinstance(content, list):
+                        content_key = tuple(content)
+                    else:
+                        content_key = (content,)
+                    
+                    if content_key not in file_map:
+                        file_map[content_key] = []
+                    file_map[content_key].append(full_path)
+            
+            if 'dirs' in node:
+                for dirname, subnode in node['dirs'].items():
+                    traverse(subnode, current_path + '/' + dirname)
+        
+        # Traverse from root
+        for top_level, node in self.filesystem.items():
+            if isinstance(node, dict):
+                traverse(node, '/' + top_level)
+        
+        return file_map
+    
+    def _get_default_files_in_directory(self, dir_path):
+        """
+        Get list of default files that should exist in a directory.
+        Returns: list of (filename, full_path) tuples
+        """
+        # Convert path string to path list
+        if dir_path.startswith('/'):
+            path_parts = [p for p in dir_path.split('/') if p]
+        else:
+            path_parts = dir_path.split('/')
+            path_parts = [p for p in path_parts if p]
+        
+        # Navigate to directory
+        current = self.filesystem
+        for part in path_parts:
+            if part in current:
+                current = current[part]
+            elif 'dirs' in current and part in current['dirs']:
+                current = current['dirs'][part]
+            else:
+                return []  # Directory doesn't exist in default filesystem
+        
+        # Get files from this directory
+        files = []
+        if 'files' in current:
+            for filename in current['files'].keys():
+                full_path = '/' + '/'.join(path_parts) + '/' + filename
+                files.append((filename, full_path))
+        
+        return files
+    
+    def reset_directory(self, dir_path):
+        """
+        Reset a directory to its default state.
+        
+        Args:
+            dir_path: Directory path (e.g., '/home/pilot/blthll/data' or 'data')
+            
+        Returns:
+            tuple: (success: bool, error_message: str or None)
+        """
+        # Normalize directory path
+        if not dir_path.startswith('/'):
+            # Relative path - make it absolute from current directory
+            current_pwd = self.get_pwd()
+            if dir_path == '.':
+                dir_path = current_pwd
+            elif dir_path == '..':
+                # Parent directory
+                if len(self.current_path) > 0:
+                    parent_parts = self.current_path[:-1]
+                    dir_path = '/' + '/'.join(parent_parts) if parent_parts else '/'
+                else:
+                    return (False, "Already at root directory")
+            else:
+                dir_path = current_pwd + '/' + dir_path
+        
+        # Ensure path ends without trailing slash (except root)
+        if dir_path != '/' and dir_path.endswith('/'):
+            dir_path = dir_path[:-1]
+        
+        # Get default files that should be in this directory
+        default_files = self._get_default_files_in_directory(dir_path)
+        default_file_paths = {full_path for _, full_path in default_files}
+        
+        # Build map of default file contents to their paths
+        default_file_map = self._get_default_file_paths()
+        
+        # 1. Remove all files in user_created_files in this directory
+        # (These are either user-created files or moved default files)
+        files_to_remove = []
+        for file_path in list(self.user_created_files.keys()):
+            if file_path.startswith(dir_path + '/'):
+                files_to_remove.append(file_path)
+        
+        # For moved default files, we need to restore them to their original location
+        # by removing them from user_deleted_files at the original path
+        for file_path in files_to_remove:
+            content = self.user_created_files[file_path]
+            if isinstance(content, list):
+                content_key = tuple(content)
+            else:
+                content_key = (content,)
+            
+            # Check if this is a moved default file
+            if content_key in default_file_map:
+                # Find the original location(s) of this file
+                original_paths = default_file_map[content_key]
+                # Remove from user_deleted_files at original locations
+                for orig_path in original_paths:
+                    if orig_path in self.user_deleted_files:
+                        self.user_deleted_files.remove(orig_path)
+            
+            # Remove from user_created_files
+            del self.user_created_files[file_path]
+        
+        # 3. Restore deleted default files from this directory
+        for filename, full_path in default_files:
+            if full_path in self.user_deleted_files:
+                self.user_deleted_files.remove(full_path)
+        
+        # 4. Remove user-modified files in this directory (restore to default)
+        modified_to_remove = []
+        for file_path in list(self.user_modified_files.keys()):
+            if file_path.startswith(dir_path + '/'):
+                modified_to_remove.append(file_path)
+        
+        for file_path in modified_to_remove:
+            del self.user_modified_files[file_path]
+        
+        # 5. Remove user-created directories in this directory
+        dirs_to_remove = []
+        for dir_path_item in self.user_created_dirs:
+            if dir_path_item.startswith(dir_path + '/'):
+                dirs_to_remove.append(dir_path_item)
+        
+        for dir_path_item in dirs_to_remove:
+            self.user_created_dirs.remove(dir_path_item)
+        
+        return (True, None)
 

@@ -1040,6 +1040,24 @@ class MainMenuState(BaseState):
             self.add_output("Filesystem reset! Your custom files have been moved to blthll/")
             self.add_output("")
         
+        elif cmd_lower.startswith("rm save --dir "):
+            # Reset a specific directory to default state
+            dir_path = command[15:].strip()  # "rm save --dir " is 15 chars
+            if not dir_path:
+                self.add_output("Usage: rm save --dir <directory>")
+                self.add_output("")
+            else:
+                success, error = self.filesystem.reset_directory(dir_path)
+                if success:
+                    self.add_output(f"Directory '{dir_path}' reset to default state.")
+                    self.add_output("  - Removed user-created files")
+                    self.add_output("  - Moved default files back to original locations")
+                    self.add_output("  - Restored deleted default files")
+                    self._save_filesystem()
+                else:
+                    self.add_output(f"Error: {error}")
+                self.add_output("")
+        
         elif cmd_lower.startswith("rm ") and not cmd_lower.startswith("rm -"):
             # Delete file
             filename = command[3:].strip()

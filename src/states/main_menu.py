@@ -983,6 +983,16 @@ class MainMenuState(BaseState):
             except ImportError:
                 self.add_output("start: 'asteroids' - game file not found")
                 self.add_output("")
+        elif cmd_lower == "start minesweeper":
+            # Launch Minesweeper game
+            try:
+                from src.states.minesweeper import MinesweeperState
+                minesweeper_state = MinesweeperState(self.game, self)
+                self.game.change_state(minesweeper_state)
+                self._mark_secret_found("minesweeper")
+            except Exception as e:
+                self.add_output(f"start: 'minesweeper' - error: {e}")
+                self.add_output("")
         
         elif cmd_lower in ["top", "htop"]:
             # Interactive process viewer

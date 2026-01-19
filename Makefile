@@ -121,16 +121,17 @@ build: install-deps
 			echo "Fixing app bundle icon..."; \
 			APP_PATH="$(RELEASE_DIR)/$(EXECUTABLE_NAME).app"; \
 			if [ -f "src/assets/bllthll.icns" ]; then \
-				cp "src/assets/bllthll.icns" "$$APP_PATH/Contents/Resources/bllthll.icns"; \
+				RESOURCES_DIR="$$APP_PATH/Contents/Resources"; \
+				cp "src/assets/bllthll.icns" "$$RESOURCES_DIR/bllthll.icns"; \
+				cp "src/assets/bllthll.icns" "$$RESOURCES_DIR/icon-windowed.icns"; \
 				$(PYTHON) -c "import plistlib; \
-import sys; \
 with open('$$APP_PATH/Contents/Info.plist', 'rb') as f: \
 	plist = plistlib.load(f); \
 plist['CFBundleIconFile'] = 'bllthll'; \
 with open('$$APP_PATH/Contents/Info.plist', 'wb') as f: \
 	plistlib.dump(plist, f)"; \
 				touch "$$APP_PATH"; \
-				echo "Icon set in Info.plist and app bundle refreshed"; \
+				echo "Custom icon installed (replaced both bllthll.icns and icon-windowed.icns)"; \
 			fi; \
 		fi; \
 	elif [ "$$(uname)" = "Linux" ]; then \

@@ -30,9 +30,10 @@ class VirtualFileSystem:
         self.user_modified_files = {}  # path -> content
         self.user_deleted_files = set()  # paths of default files that have been deleted/moved
         
-        # File permissions: path -> "rwx" string (read, write, execute)
+        # File permissions: path -> permission string
+        # Can be 3 characters (user only: "rwx") or 9 characters (user, group, other: "rwxrwxrwx")
         # Default: "rw-" for most files, "rwx" for .py files
-        self.file_permissions = {}  # path -> permission string like "rwx", "rw-", "r--"
+        self.file_permissions = {}  # path -> permission string like "rwx" or "rwxrwxrwx"
         
         # Default permissions for specific files in the default filesystem
         self.default_file_permissions = self._get_default_file_permissions()
@@ -585,7 +586,7 @@ class VirtualFileSystem:
             filename: Name of file
             
         Returns:
-            str: Permission string like "rwx", "rw-", "r--", or None if file doesn't exist
+            str: Permission string like "rwx" (3 chars) or "rwxrwxrwx" (9 chars), or None if file doesn't exist
         """
         full_path = self.get_pwd() + '/' + filename
         
@@ -667,19 +668,56 @@ class VirtualFileSystem:
             return (False, f"chmod: changing permissions of '{filename}': Operation not permitted")
         
         # Parse permissions
-        if permissions.isdigit() and len(permissions) == 3:
-            # Octal format (e.g., "644", "755")
+        if permissions.isdigit():
+            # Octal format (e.g., "644", "755", "0755", "7", "777")
             try:
-                mode = int(permissions[2])  # Just use the user permissions for simplicity
-                perm_str = ""
-                perm_str += "r" if mode & 4 else "-"
-                perm_str += "w" if mode & 2 else "-"
-                perm_str += "x" if mode & 1 else "-"
-                permissions = perm_str
-            except ValueError:
+                # Handle 4-digit octal (leading 0) or 3-digit or single digit
+                if len(permissions) == 4 and permissions[0] == '0':
+                    # 4-digit octal like "0755" - use the 3 digits after the leading 0
+                    # Parse all three: user, group, other
+                    user_mode = int(permissions[1])
+                    group_mode = int(permissions[2])
+                    other_mode = int(permissions[3])
+                    
+                    def mode_to_str(mode):
+                        s = ""
+                        s += "r" if mode & 4 else "-"
+                        s += "w" if mode & 2 else "-"
+                        s += "x" if mode & 1 else "-"
+                        return s
+                    
+                    permissions = mode_to_str(user_mode) + mode_to_str(group_mode) + mode_to_str(other_mode)
+                elif len(permissions) == 1:
+                    # Single digit - treat as user permissions only (3 characters)
+                    mode = int(permissions)
+                    perm_str = ""
+                    perm_str += "r" if mode & 4 else "-"
+                    perm_str += "w" if mode & 2 else "-"
+                    perm_str += "x" if mode & 1 else "-"
+                    permissions = perm_str
+                elif len(permissions) == 3:
+                    # 3-digit octal: user, group, other - create full 9-character string
+                    user_mode = int(permissions[0])
+                    group_mode = int(permissions[1])
+                    other_mode = int(permissions[2])
+                    
+                    def mode_to_str(mode):
+                        s = ""
+                        s += "r" if mode & 4 else "-"
+                        s += "w" if mode & 2 else "-"
+                        s += "x" if mode & 1 else "-"
+                        return s
+                    
+                    permissions = mode_to_str(user_mode) + mode_to_str(group_mode) + mode_to_str(other_mode)
+                else:
+                    return (False, f"chmod: invalid mode: '{permissions}' (must be 1-4 digits)")
+            except (ValueError, IndexError):
                 return (False, f"chmod: invalid mode: '{permissions}'")
         elif len(permissions) == 3 and all(c in 'rwx-' for c in permissions):
-            # Symbolic format (e.g., "rwx", "rw-", "r--")
+            # Symbolic format (e.g., "rwx", "rw-", "r--") - 3 characters, user only
+            pass
+        elif len(permissions) == 9 and all(c in 'rwx-' for c in permissions):
+            # Full 9-character format (e.g., "rwxrwxrwx")
             pass
         else:
             return (False, f"chmod: invalid mode: '{permissions}'")
@@ -707,7 +745,37 @@ class VirtualFileSystem:
         if permission not in perm_map:
             return False
         
-        return perms[perm_map[permission]] == permission
+        perm_index = perm_map[permission]
+        
+        # Determine which permission set to check based on user's relationship to file
+        owner = self.get_file_owner(filename)
+        
+        # Root always has all permissions
+        if self.current_user == "root":
+            return True
+        
+        # Check which permission group applies
+        if len(perms) == 9:
+            # 9-character format: user, group, other
+            if self.current_user == owner:
+                # User is owner - check user permissions (positions 0-2)
+                check_index = perm_index
+            else:
+                # For simplicity, if not owner, check other permissions (positions 6-8)
+                # In a full system, we'd check group membership first
+                check_index = 6 + perm_index
+        else:
+            # 3-character format: only user permissions
+            # If user is owner, check permissions; otherwise deny
+            if self.current_user == owner:
+                check_index = perm_index
+            else:
+                return False
+        
+        # Check if permission is granted
+        if check_index >= len(perms):
+            return False
+        return perms[check_index] == permission
     
     def move_file(self, source, destination):
         """

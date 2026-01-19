@@ -585,7 +585,14 @@ class MainMenuState(BaseState):
                             perms = self.filesystem.get_permissions(item)
                             owner = self.filesystem.get_file_owner(item)
                             if perms:
-                                self.add_output(f"-{perms}------  {owner:6}  {item}")
+                                # If permissions are 3 characters, pad to 9 for display
+                                if len(perms) == 3:
+                                    perms_display = perms + "------"
+                                elif len(perms) == 9:
+                                    perms_display = perms
+                                else:
+                                    perms_display = perms + "-" * (9 - len(perms))
+                                self.add_output(f"-{perms_display}  {owner:6}  {item}")
                             else:
                                 self.add_output(f"-rw-------  {owner:6}  {item}")
                 else:

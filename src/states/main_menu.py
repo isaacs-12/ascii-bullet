@@ -36,6 +36,40 @@ class MainMenuState(BaseState):
         self.boot_timer = 0
         self.boot_delay = 200  # ms between boot lines
         
+        # Intro sequence state
+        self.showing_intro = False
+        self.intro_page = 0  # 0 = page 1, 1 = page 2, 2 = done
+        self.intro_waiting_for_key = False
+        self.intro_text_pages = [
+            [
+                "Welcome to BLLTHLL. What you're looking at isn't your computer's terminal.",
+                "...",
+                "We here at Walnut Industries have taken control of your computer, and locked",
+                "your super sick games library behind a series of puzzles (I'm maniacally",
+                "laughing, I wish you could hear it)",
+                "...",
+                "In order to progress through this game, er, test... I mean test... you will",
+                "need to discover a decidedly finite quantity of secrets, possible only by",
+                "demonstrating technical proficiency.",
+                "",
+                "(Press any key to continue)"
+            ],
+            [
+                "In this computer we've left you with are a selection of tools you might know",
+                "well, or that you might need some introduction to. We don't want you to be",
+                "totally alone, soyou can always use `help` as a reminder of what you have at",
+                "your disposal.Solutions to puzzles can usually be found multiple ways, but",
+                "as a tip, look around in the filesystem, and remember the tools we've given you.",
+                "If you'd rather play games, we give you one for each puzzle you solve...",
+                "And you can also use Python to help you solve puzzles too, though we've limited",
+                "its use here so as not to make it too powerful.",
+                "...",
+                "Good luck.",
+                "",
+                "(Press any key to continue)"
+            ]
+        ]
+        
         # Command history (load from save)
         saved_history = game.save_system.get_command_history()
         self.command_history = saved_history.copy() if saved_history else []
@@ -91,6 +125,25 @@ class MainMenuState(BaseState):
         """Handle keyboard input for terminal"""
         for event in events:
             if event.type == pygame.KEYDOWN:
+                # Handle intro sequence
+                if self.showing_intro:
+                    # If typing is complete and we're not already waiting, mark as waiting
+                    if not self.is_typing and not self.intro_waiting_for_key and not self.typing_queue:
+                        self.intro_waiting_for_key = True
+                    
+                    # If waiting for key, any key press advances to next page
+                    if self.intro_waiting_for_key and not self.is_typing:
+                        self.intro_page += 1
+                        if self.intro_page < len(self.intro_text_pages):
+                            # Show next page
+                            self._start_intro_page(self.intro_page)
+                        else:
+                            # Intro complete, show main screen
+                            self.showing_intro = False
+                            self.game.save_system.mark_intro_shown()
+                            self._show_main_screen()
+                        return  # Don't process other keys during intro
+                
                 # Handle text editor if active
                 if self.editor_active and self.editor:
                     self.editor.handle_event(event)
@@ -325,10 +378,31 @@ class MainMenuState(BaseState):
                 self.sudo_authenticated = False
     
     def complete_boot(self):
-        """Complete the boot sequence and show main screen"""
+        """Complete the boot sequence and show main screen or intro"""
         self.booting = False
         self.output_lines = []
         
+        # Check if intro should be shown
+        if not self.game.save_system.has_intro_been_shown():
+            # Show intro sequence
+            self.showing_intro = True
+            self.intro_page = 0
+            self.intro_waiting_for_key = False
+            self._start_intro_page(0)
+        else:
+            # Skip intro, show main screen
+            self._show_main_screen()
+    
+    def _start_intro_page(self, page_index):
+        """Start showing an intro page"""
+        if page_index < len(self.intro_text_pages):
+            self.intro_waiting_for_key = False
+            # Clear output and start typing the page
+            self.output_lines = []
+            self.type_output(self.intro_text_pages[page_index], delay=30)
+    
+    def _show_main_screen(self):
+        """Show the main screen (ASCII title and welcome)"""
         # Add ASCII title
         for line in BLTHLL_ASCII:
             self.output_lines.append(line)
@@ -1612,6 +1686,12 @@ class MainMenuState(BaseState):
         
         # If booting, show "Press any key" hint
         if self.booting and self.boot_index >= len(self.boot_sequence):
+            hint_y = self.renderer.char_height - 3
+            hint = "[Press any key to continue]"
+            self.renderer.write_centered(hint_y, hint, self.renderer.COLORS['menu_normal'])
+        
+        # If showing intro and waiting for key, show hint
+        if self.showing_intro and self.intro_waiting_for_key and not self.is_typing:
             hint_y = self.renderer.char_height - 3
             hint = "[Press any key to continue]"
             self.renderer.write_centered(hint_y, hint, self.renderer.COLORS['menu_normal'])

@@ -52,6 +52,7 @@ class SaveSystem:
             "secret_commands_found": [],  # List of secret command IDs
             "installed_packages": [],  # List of brew-installed package names
             "virus_killed": False,  # Whether the player killed the virus process
+            "intro_shown": False,  # Whether the intro sequence has been shown
             "filesystem_explored": {
                 "directories_visited": [],
                 "files_read": []
@@ -208,6 +209,16 @@ class SaveSystem:
     def is_virus_killed(self):
         """Check if the virus has been killed"""
         return self.data.get("virus_killed", False)
+    
+    # Intro sequence
+    def has_intro_been_shown(self):
+        """Check if the intro sequence has been shown"""
+        return self.data.get("intro_shown", False)
+    
+    def mark_intro_shown(self):
+        """Mark that the intro sequence has been shown"""
+        self.data["intro_shown"] = True
+        self.save()
     
     # Filesystem Exploration
     def mark_directory_visited(self, path):

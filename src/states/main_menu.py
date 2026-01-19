@@ -507,6 +507,36 @@ class MainMenuState(BaseState):
             else:
                 self.add_output("  No games played yet")
             self.add_output("")
+            
+            # Asteroids stats
+            self.add_output("Asteroids:")
+            asteroids_games = stats.get('asteroids_games_played', 0)
+            asteroids_best = stats.get('asteroids_best_score', 0)
+            asteroids_total = stats.get('asteroids_total_score', 0)
+            asteroids_stage = stats.get('asteroids_highest_stage', 0)
+            asteroids_time = stats.get('asteroids_playtime_seconds', 0)
+            if asteroids_games > 0:
+                self.add_output(f"  Games Played: {asteroids_games}")
+                if asteroids_best > 0:
+                    self.add_output(f"  Best Score: {asteroids_best:,}")
+                if asteroids_total > 0:
+                    avg_score = asteroids_total // asteroids_games
+                    self.add_output(f"  Average Score: {avg_score:,}")
+                if asteroids_stage > 0:
+                    self.add_output(f"  Highest Stage: {asteroids_stage}")
+                if asteroids_time > 0:
+                    self.add_output(f"  Total Playtime: {format_time(asteroids_time)}")
+            else:
+                self.add_output("  No games played yet")
+            self.add_output("")
+            
+            # Oregon Trail stats
+            oregon_time = stats.get('oregon_trail_playtime_seconds', 0)
+            if oregon_time > 0:
+                self.add_output("Oregon Trail:")
+                self.add_output(f"  Total Playtime: {format_time(oregon_time)}")
+                self.add_output("")
+            
             self.add_output("Exploration:")
             self.add_output(f"  Secrets Found: {len(self.secret_commands_found)}")
             self.add_output(f"  Directories Visited: {exploration['dirs_visited']}")

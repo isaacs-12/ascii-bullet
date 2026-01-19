@@ -18,6 +18,11 @@ bullet_speed = 15
 saucer_speed = 5
 small_saucer_accuracy = 10
 
+# Fixed playable area dimensions (pixels)
+PLAYABLE_WIDTH = 800
+PLAYABLE_HEIGHT = 600
+BORDER_WIDTH = 2  # Border thickness in pixels
+
 
 # Color scheme - green instead of white
 green = (0, 255, 0)
@@ -57,27 +62,22 @@ class Asteroid:
             dist = random.uniform(self.size / 2, self.size)
             full_circle += random.uniform(18, 36)
 
-    def updateAsteroid(self, gameDisplay):
-        # Move asteroid
-        self.x += self.speed
-        self.y += self.speed * math.sin(self.dir) / math.cos(self.dir) if math.cos(self.dir) != 0 else 0
-        # Actually, let's use the original movement logic
+    def updateAsteroid(self, gameDisplay, playable_width, playable_height, offset_x=0, offset_y=0):
+        # Move asteroid (matching original physics exactly)
         self.x += self.speed * math.cos(self.dir)
         self.y += self.speed * math.sin(self.dir)
 
-        # Check for wrapping
-        display_width = gameDisplay.get_width()
-        display_height = gameDisplay.get_height()
-        if self.x > display_width:
+        # Check for wrapping (use fixed playable area)
+        if self.x > playable_width:
             self.x = 0
         elif self.x < 0:
-            self.x = display_width
-        elif self.y > display_height:
+            self.x = playable_width
+        elif self.y > playable_height:
             self.y = 0
         elif self.y < 0:
-            self.y = display_height
+            self.y = playable_height
 
-        # Draw asteroid
+        # Draw asteroid (with border offset)
         for v in range(len(self.vertices)):
             if v == len(self.vertices) - 1:
                 next_v = self.vertices[0]
@@ -85,10 +85,10 @@ class Asteroid:
                 next_v = self.vertices[v + 1]
             this_v = self.vertices[v]
             pygame.draw.line(gameDisplay, green, 
-                            (self.x + this_v[0] * math.cos(this_v[1] * math.pi / 180),
-                             self.y + this_v[0] * math.sin(this_v[1] * math.pi / 180)),
-                            (self.x + next_v[0] * math.cos(next_v[1] * math.pi / 180),
-                             self.y + next_v[0] * math.sin(next_v[1] * math.pi / 180)))
+                            (self.x + offset_x + this_v[0] * math.cos(this_v[1] * math.pi / 180),
+                             self.y + offset_y + this_v[0] * math.sin(this_v[1] * math.pi / 180)),
+                            (self.x + offset_x + next_v[0] * math.cos(next_v[1] * math.pi / 180),
+                             self.y + offset_y + next_v[0] * math.sin(next_v[1] * math.pi / 180)))
 
 
 class Bullet:
@@ -99,25 +99,26 @@ class Bullet:
         self.dir = direction
         self.life = 30
 
-    def updateBullet(self, gameDisplay):
+    def updateBullet(self, gameDisplay, playable_width, playable_height, offset_x, offset_y):
         # Moving
         self.x += bullet_speed * math.cos(self.dir * math.pi / 180)
         self.y += bullet_speed * math.sin(self.dir * math.pi / 180)
 
-        # Drawing
-        pygame.draw.circle(gameDisplay, green, (int(self.x), int(self.y)), 3)
+        # Drawing (with border offset) - only draw if within playable area
+        draw_x = self.x + offset_x
+        draw_y = self.y + offset_y
+        if 0 <= draw_x < gameDisplay.get_width() and 0 <= draw_y < gameDisplay.get_height():
+            pygame.draw.circle(gameDisplay, green, (int(draw_x), int(draw_y)), 3)
 
-        # Wrapping
-        display_width = gameDisplay.get_width()
-        display_height = gameDisplay.get_height()
-        if self.x > display_width:
+        # Wrapping (use fixed playable area)
+        if self.x > playable_width:
             self.x = 0
         elif self.x < 0:
-            self.x = display_width
-        elif self.y > display_height:
+            self.x = playable_width
+        elif self.y > playable_height:
             self.y = 0
         elif self.y < 0:
-            self.y = display_height
+            self.y = playable_height
         self.life -= 1
 
 
@@ -134,10 +135,7 @@ class Saucer:
         self.bdir = 0
         self.soundDelay = 0
 
-    def updateSaucer(self, gameDisplay, player_x, player_y, stage):
-        display_width = gameDisplay.get_width()
-        display_height = gameDisplay.get_height()
-        
+    def updateSaucer(self, gameDisplay, player_x, player_y, stage, playable_width, playable_height):
         # Move saucer
         self.x += saucer_speed * math.cos(self.dir * math.pi / 180)
         self.y += saucer_speed * math.sin(self.dir * math.pi / 180)
@@ -146,12 +144,12 @@ class Saucer:
         if random.randrange(0, 100) == 1:
             self.dir = random.choice(self.dirchoice)
 
-        # Wrapping
+        # Wrapping (use fixed playable area)
         if self.y < 0:
-            self.y = display_height
-        elif self.y > display_height:
+            self.y = playable_height
+        elif self.y > playable_height:
             self.y = 0
-        if self.x < 0 or self.x > display_width:
+        if self.x < 0 or self.x > playable_width:
             self.state = "Dead"
 
         # Shooting
@@ -195,23 +193,23 @@ class Saucer:
         # Reset bullet cooldown
         self.cd = 0
 
-    def drawSaucer(self, gameDisplay):
-        # Draw saucer
+    def drawSaucer(self, gameDisplay, offset_x=0, offset_y=0):
+        # Draw saucer (with border offset)
         pygame.draw.polygon(gameDisplay, green,
-                            ((self.x + self.size, self.y),
-                             (self.x + self.size / 2, self.y + self.size / 3),
-                             (self.x - self.size / 2, self.y + self.size / 3),
-                             (self.x - self.size, self.y),
-                             (self.x - self.size / 2, self.y - self.size / 3),
-                             (self.x + self.size / 2, self.y - self.size / 3)), 1)
+                            ((self.x + offset_x + self.size, self.y + offset_y),
+                             (self.x + offset_x + self.size / 2, self.y + offset_y + self.size / 3),
+                             (self.x + offset_x - self.size / 2, self.y + offset_y + self.size / 3),
+                             (self.x + offset_x - self.size, self.y + offset_y),
+                             (self.x + offset_x - self.size / 2, self.y + offset_y - self.size / 3),
+                             (self.x + offset_x + self.size / 2, self.y + offset_y - self.size / 3)), 1)
         pygame.draw.line(gameDisplay, green,
-                         (self.x - self.size, self.y),
-                         (self.x + self.size, self.y))
+                         (self.x + offset_x - self.size, self.y + offset_y),
+                         (self.x + offset_x + self.size, self.y + offset_y))
         pygame.draw.polygon(gameDisplay, green,
-                            ((self.x - self.size / 2, self.y - self.size / 3),
-                             (self.x - self.size / 3, self.y - 2 * self.size / 3),
-                             (self.x + self.size / 3, self.y - 2 * self.size / 3),
-                             (self.x + self.size / 2, self.y - self.size / 3)), 1)
+                            ((self.x + offset_x - self.size / 2, self.y + offset_y - self.size / 3),
+                             (self.x + offset_x - self.size / 3, self.y + offset_y - 2 * self.size / 3),
+                             (self.x + offset_x + self.size / 3, self.y + offset_y - 2 * self.size / 3),
+                             (self.x + offset_x + self.size / 2, self.y + offset_y - self.size / 3)), 1)
 
 
 class deadPlayer:
@@ -225,12 +223,12 @@ class deadPlayer:
         self.lenght = l
         self.speed = random.randint(2, 8)
 
-    def updateDeadPlayer(self, gameDisplay):
+    def updateDeadPlayer(self, gameDisplay, offset_x=0, offset_y=0):
         pygame.draw.line(gameDisplay, green,
-                         (self.x + self.lenght * math.cos(self.angle) / 2,
-                          self.y + self.lenght * math.sin(self.angle) / 2),
-                         (self.x - self.lenght * math.cos(self.angle) / 2,
-                          self.y - self.lenght * math.sin(self.angle) / 2))
+                         (self.x + offset_x + self.lenght * math.cos(self.angle) / 2,
+                          self.y + offset_y + self.lenght * math.sin(self.angle) / 2),
+                         (self.x + offset_x - self.lenght * math.cos(self.angle) / 2,
+                          self.y + offset_y - self.lenght * math.sin(self.angle) / 2))
         self.angle += self.rtspd
         self.x += self.speed * math.cos(self.dir)
         self.y += self.speed * math.sin(self.dir)
@@ -290,13 +288,13 @@ class Player:
         # Rotate player
         self.dir += self.rtspd
 
-    def drawPlayer(self, gameDisplay):
+    def drawPlayer(self, gameDisplay, offset_x=0, offset_y=0):
         a = math.radians(self.dir)
-        x = self.x
-        y = self.y
+        x = self.x + offset_x
+        y = self.y + offset_y
         s = player_size
         t = self.thrust
-        # Draw player
+        # Draw player (with border offset)
         pygame.draw.line(gameDisplay, green,
                          (x - (s * math.sqrt(130) / 12) * math.cos(math.atan(7 / 9) + a),
                           y - (s * math.sqrt(130) / 12) * math.sin(math.atan(7 / 9) + a)),
@@ -353,9 +351,35 @@ class AsteroidsGameplayState(BaseState):
         super().__init__(game)
         self.previous_state = previous_state
         
-        # Get screen dimensions from renderer
-        self.display_width = self.renderer.screen.get_width()
-        self.display_height = self.renderer.screen.get_height()
+        # Fixed playable area dimensions
+        self.playable_width = PLAYABLE_WIDTH
+        self.playable_height = PLAYABLE_HEIGHT
+        
+        # Calculate required window size (playable area + border + padding)
+        required_width = self.playable_width + (BORDER_WIDTH * 2) + 40  # Extra padding for UI
+        required_height = self.playable_height + (BORDER_WIDTH * 2) + 40
+        
+        # Get current screen size
+        current_width = self.renderer.screen.get_width()
+        current_height = self.renderer.screen.get_height()
+        
+        # Resize window if too small
+        if current_width < required_width or current_height < required_height:
+            new_width = max(required_width, current_width)
+            new_height = max(required_height, current_height)
+            # Resize the window and update renderer's screen reference
+            self.renderer.screen = pygame.display.set_mode((new_width, new_height), pygame.RESIZABLE)
+            pygame.display.set_caption("ASCII BULLET HELL - Asteroids")
+        
+        # Calculate playable area offset (centered in window, accounting for border)
+        screen_width = self.renderer.screen.get_width()
+        screen_height = self.renderer.screen.get_height()
+        self.border_offset_x = (screen_width - self.playable_width) // 2
+        self.border_offset_y = (screen_height - self.playable_height) // 2
+        
+        # Use fixed dimensions for game logic
+        self.display_width = self.playable_width
+        self.display_height = self.playable_height
         
         # Game state variables (from original gameLoop)
         self.gameState = "Playing"
@@ -443,9 +467,8 @@ class AsteroidsGameplayState(BaseState):
         if self.gameState == "Game Over":
             return
         
-        # Update screen dimensions in case of resize
-        self.display_width = self.renderer.screen.get_width()
-        self.display_height = self.renderer.screen.get_height()
+        # Use fixed dimensions (don't update from screen)
+        # self.display_width and self.display_height are already set to fixed values
         
         # Update player
         self.player.updatePlayer(self.display_width, self.display_height)
@@ -531,7 +554,7 @@ class AsteroidsGameplayState(BaseState):
         if self.saucer.state == "Dead":
             if (random.randint(0, 6000) <= (self.intensity * 2) / (self.stage * 9) and 
                 self.next_level_delay == 0):
-                self.saucer.createSaucer(self.display_width, self.display_height)
+                self.saucer.createSaucer(self.playable_width, self.playable_height)
                 # Only small saucers >40000
                 if self.score >= 40000:
                     self.saucer.type = "Small"
@@ -671,37 +694,63 @@ class AsteroidsGameplayState(BaseState):
             return  # Early return - don't render game entities
         
         # Normal gameplay rendering
+        # Use the renderer's screen directly
         gameDisplay = self.renderer.screen
+        
+        # Recalculate border offsets in case window was resized
+        screen_width = gameDisplay.get_width()
+        screen_height = gameDisplay.get_height()
+        self.border_offset_x = (screen_width - self.playable_width) // 2
+        self.border_offset_y = (screen_height - self.playable_height) // 2
         
         # Reset display
         gameDisplay.fill(black)
         
-        # Update and draw asteroids
+        # Draw ASCII border around playable area
+        self._draw_border(gameDisplay)
+
+        # Set clipping rectangle to playable area (so entities don't overlap borders)
+        playable_rect = pygame.Rect(
+            self.border_offset_x,
+            self.border_offset_y,
+            self.playable_width,
+            self.playable_height
+        )
+        old_clip = gameDisplay.get_clip()
+        gameDisplay.set_clip(playable_rect)
+
+        
+        
+        # Update and draw asteroids (using fixed dimensions)
         for a in self.asteroids:
-            a.updateAsteroid(gameDisplay)
+            a.updateAsteroid(gameDisplay, self.playable_width, self.playable_height,
+                           self.border_offset_x, self.border_offset_y)
         
         # Update and draw saucer
         if self.saucer.state == "Alive":
-            self.saucer.updateSaucer(gameDisplay, self.player.x, self.player.y, self.stage)
-            self.saucer.drawSaucer(gameDisplay)
+            self.saucer.updateSaucer(gameDisplay, self.player.x, self.player.y, self.stage,
+                                    self.playable_width, self.playable_height)
+            self.saucer.drawSaucer(gameDisplay, self.border_offset_x, self.border_offset_y)
         
         # Update and draw saucer bullets
         for b in self.saucer.bullets[:]:
-            b.updateBullet(gameDisplay)
+            b.updateBullet(gameDisplay, self.playable_width, self.playable_height,
+                          self.border_offset_x, self.border_offset_y)
             if b.life <= 0:
                 if b in self.saucer.bullets:
                     self.saucer.bullets.remove(b)
         
         # Update and draw bullets
         for b in self.bullets[:]:
-            b.updateBullet(gameDisplay)
+            b.updateBullet(gameDisplay, self.playable_width, self.playable_height,
+                          self.border_offset_x, self.border_offset_y)
             if b.life <= 0:
                 if b in self.bullets:
                     self.bullets.remove(b)
         
         # Update and draw ship fragments
         for f in self.player_pieces[:]:
-            f.updateDeadPlayer(gameDisplay)
+            f.updateDeadPlayer(gameDisplay, self.border_offset_x, self.border_offset_y)
             if (f.x > self.display_width or f.x < 0 or 
                 f.y > self.display_height or f.y < 0):
                 self.player_pieces.remove(f)
@@ -714,20 +763,52 @@ class AsteroidsGameplayState(BaseState):
                         if self.player_blink == 0:
                             self.player_blink = 10
                         else:
-                            self.player.drawPlayer(gameDisplay)
+                            self.player.drawPlayer(gameDisplay, self.border_offset_x, self.border_offset_y)
                     self.player_blink -= 1
                 else:
                     self.player_dying_delay -= 1
         else:
-            self.player.drawPlayer(gameDisplay)
+            self.player.drawPlayer(gameDisplay, self.border_offset_x, self.border_offset_y)
         
-        # Draw score
-        drawText(gameDisplay, str(self.score), green, 60, 20, 40, False)
+        # Draw score (with border offset)
+        drawText(gameDisplay, str(self.score), green, 
+
+                self.border_offset_x + 60, self.border_offset_y + 20, 40, False)
         
-        # Draw Lives
+        # Draw Lives (with border offset)
         for l in range(self.live + 1):
             temp_player = Player(75 + l * 25, 75)
-            temp_player.drawPlayer(gameDisplay)
+            temp_player.drawPlayer(gameDisplay, self.border_offset_x, self.border_offset_y)
+        
+        # Restore clipping rectangle
+        gameDisplay.set_clip(old_clip)
         
         # Update screen
+
+        gameDisplay.set_clip(old_clip)
+
         pygame.display.flip()
+    
+    def _draw_border(self, gameDisplay):
+        """Draw ASCII border around the playable area"""
+        border_color = green
+        
+        # Calculate border rectangle positions
+        border_left = self.border_offset_x - BORDER_WIDTH
+        border_right = self.border_offset_x + self.playable_width + BORDER_WIDTH
+        border_top = self.border_offset_y - BORDER_WIDTH
+        border_bottom = self.border_offset_y + self.playable_height + BORDER_WIDTH
+        
+        # Draw border using pygame rectangles (simpler and faster)
+        # Top border
+        pygame.draw.rect(gameDisplay, border_color, 
+                        (border_left, border_top, border_right - border_left, BORDER_WIDTH))
+        # Bottom border
+        pygame.draw.rect(gameDisplay, border_color,
+                        (border_left, border_bottom - BORDER_WIDTH, border_right - border_left, BORDER_WIDTH))
+        # Left border
+        pygame.draw.rect(gameDisplay, border_color,
+                        (border_left, border_top, BORDER_WIDTH, border_bottom - border_top))
+        # Right border
+        pygame.draw.rect(gameDisplay, border_color,
+                        (border_right - BORDER_WIDTH, border_top, BORDER_WIDTH, border_bottom - border_top))

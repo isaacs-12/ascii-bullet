@@ -22,6 +22,12 @@ class MainMenuState(BaseState):
         self.cursor_visible = True
         self.cursor_timer = 0
         self.max_lines = self.renderer.char_height - 2  # Leave room for input
+        self.scroll_offset = 0  # How many lines to scroll back (0 = show most recent)
+        
+        # Smooth scrolling state
+        self.scroll_direction = 0  # -1 = up, 1 = down, 0 = none
+        self.scroll_accumulator = 0.0  # Accumulated scroll time
+        self.scroll_rate = 5.0  # Lines per second when holding
         
         # Boot sequence state
         self.booting = True
@@ -142,27 +148,78 @@ class MainMenuState(BaseState):
                         self.input_buffer = self.input_buffer[:-1]
                 
                 elif event.key == pygame.K_UP:
-                    # Navigate command history up
-                    if self.command_history and self.history_index < len(self.command_history) - 1:
-                        self.history_index += 1
-                        self.input_buffer = self.command_history[-(self.history_index + 1)]
+                    # Shift+UP scrolls output, otherwise navigate history
+                    if event.mod & pygame.KMOD_SHIFT:
+                        # Start smooth scrolling up
+                        self.scroll_direction = -1
+                        # Also scroll one line immediately
+                        visible_lines = self.renderer.char_height - 2
+                        max_scroll = max(0, len(self.output_lines) - visible_lines)
+                        self.scroll_offset = min(max_scroll, self.scroll_offset + 1)
+                    else:
+                        # Navigate command history up
+                        if self.command_history and self.history_index < len(self.command_history) - 1:
+                            self.history_index += 1
+                            self.input_buffer = self.command_history[-(self.history_index + 1)]
                 
                 elif event.key == pygame.K_DOWN:
-                    # Navigate command history down
-                    if self.history_index > 0:
-                        self.history_index -= 1
-                        self.input_buffer = self.command_history[-(self.history_index + 1)]
-                    elif self.history_index == 0:
-                        self.history_index = -1
-                        self.input_buffer = ""
+                    # Shift+DOWN scrolls output, otherwise navigate history
+                    if event.mod & pygame.KMOD_SHIFT:
+                        # Start smooth scrolling down
+                        self.scroll_direction = 1
+                        # Also scroll one line immediately
+                        self.scroll_offset = max(0, self.scroll_offset - 1)
+                    else:
+                        # Navigate command history down
+                        if self.history_index > 0:
+                            self.history_index -= 1
+                            self.input_buffer = self.command_history[-(self.history_index + 1)]
+                        elif self.history_index == 0:
+                            self.history_index = -1
+                            self.input_buffer = ""
+                
+                elif event.key == pygame.K_PAGEUP:
+                    # Scroll output up by page
+                    visible_lines = self.renderer.char_height - 2
+                    page_size = visible_lines
+                    max_scroll = max(0, len(self.output_lines) - visible_lines)
+                    self.scroll_offset = min(max_scroll, self.scroll_offset + page_size)
+                
+                elif event.key == pygame.K_PAGEDOWN:
+                    # Scroll output down by page
+                    visible_lines = self.renderer.char_height - 2
+                    page_size = visible_lines
+                    self.scroll_offset = max(0, self.scroll_offset - page_size)
+                
+                elif event.key == pygame.K_HOME:
+                    # Scroll to top (oldest output)
+                    visible_lines = self.renderer.char_height - 2
+                    max_scroll = max(0, len(self.output_lines) - visible_lines)
+                    self.scroll_offset = max_scroll
+                
+                elif event.key == pygame.K_END:
+                    # Scroll to bottom (newest output)
+                    self.scroll_offset = 0
                 
                 elif event.key == pygame.K_TAB:
                     # Tab completion for cd and cat commands
                     self._handle_tab_completion()
                 
                 elif event.key == pygame.K_ESCAPE:
-                    # Quick quit
-                    self.game.running = False
+                    # Clear input buffer or cancel current operation
+                    if self.waiting_for_password:
+                        # Cancel password prompt
+                        self.waiting_for_password = False
+                        self.password_buffer = ""
+                        self.pending_sudo_command = None
+                        self.input_buffer = ""
+                    elif self.input_buffer:
+                        # Clear input buffer
+                        self.input_buffer = ""
+                        self.history_index = -1
+                    else:
+                        # If input is already empty, do nothing (or could quit with double-ESC)
+                        pass
                 
                 elif event.unicode and event.unicode.isprintable():
                     # Add character to input buffer
@@ -182,6 +239,48 @@ class MainMenuState(BaseState):
         if self.cursor_timer >= 500:
             self.cursor_visible = not self.cursor_visible
             self.cursor_timer = 0
+        
+        # Handle smooth scrolling when Shift+Arrow keys are held
+        keys = pygame.key.get_pressed()
+        shift_held = keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
+        
+        if shift_held:
+            if keys[pygame.K_UP]:
+                # Smooth scroll up
+                self.scroll_direction = -1
+            elif keys[pygame.K_DOWN]:
+                # Smooth scroll down
+                self.scroll_direction = 1
+            else:
+                # No arrow key held, stop scrolling
+                self.scroll_direction = 0
+                self.scroll_accumulator = 0.0
+        else:
+            # Shift not held, stop scrolling
+            self.scroll_direction = 0
+            self.scroll_accumulator = 0.0
+        
+        # Process smooth scrolling
+        if self.scroll_direction != 0:
+            # dt is in milliseconds, convert to seconds
+            dt_seconds = dt / 1000.0
+            self.scroll_accumulator += dt_seconds
+            
+            # Scroll at scroll_rate lines per second
+            lines_to_scroll = int(self.scroll_accumulator * self.scroll_rate)
+            if lines_to_scroll > 0:
+                visible_lines = self.renderer.char_height - 2
+                max_scroll = max(0, len(self.output_lines) - visible_lines)
+                
+                if self.scroll_direction == -1:
+                    # Scroll up (older content)
+                    self.scroll_offset = min(max_scroll, self.scroll_offset + lines_to_scroll)
+                else:
+                    # Scroll down (newer content)
+                    self.scroll_offset = max(0, self.scroll_offset - lines_to_scroll)
+                
+                # Keep remainder for next frame
+                self.scroll_accumulator -= lines_to_scroll / self.scroll_rate
         
         # Handle boot sequence
         if self.booting:
@@ -1464,6 +1563,13 @@ class MainMenuState(BaseState):
         # Trim old lines if too many
         if len(self.output_lines) > 1000:
             self.output_lines = self.output_lines[-1000:]
+        
+        # When new output is added, auto-scroll to bottom if already at bottom
+        # This keeps new output visible while allowing manual scrolling
+        if self.scroll_offset == 0:
+            # Already at bottom, stay at bottom to show new output
+            pass
+        # Otherwise, keep current scroll position (user is reading older output)
     
     def type_output(self, text_lines, delay=50):
         """
@@ -1504,9 +1610,20 @@ class MainMenuState(BaseState):
         # Calculate visible area
         visible_lines = self.renderer.char_height - 2  # Leave space for input line
         
-        # Get the lines to display (most recent ones)
-        start_idx = max(0, len(self.output_lines) - visible_lines)
-        visible_output = self.output_lines[start_idx:]
+        # Calculate start index based on scroll offset
+        # scroll_offset = 0 means show most recent (bottom)
+        # Higher scroll_offset means scroll back further (toward top)
+        max_scroll = max(0, len(self.output_lines) - visible_lines)
+        self.scroll_offset = min(self.scroll_offset, max_scroll)  # Clamp scroll offset
+        
+        if len(self.output_lines) <= visible_lines:
+            # All lines fit, show all
+            start_idx = 0
+        else:
+            # Calculate start index: from bottom, scroll_offset lines back
+            start_idx = max(0, len(self.output_lines) - visible_lines - self.scroll_offset)
+        
+        visible_output = self.output_lines[start_idx:start_idx + visible_lines]
         
         # Draw output lines
         for i, line in enumerate(visible_output):
@@ -1518,6 +1635,18 @@ class MainMenuState(BaseState):
         # Draw border line
         self.renderer.write(0, input_y - 1, "-" * self.renderer.char_width, 
                           self.renderer.COLORS['menu_normal'])
+        
+        # Show scroll indicator if scrolled
+        if self.scroll_offset > 0:
+            visible_lines = self.renderer.char_height - 2
+            max_scroll = max(0, len(self.output_lines) - visible_lines)
+            if max_scroll > 0:
+                scroll_pct = int((self.scroll_offset / max_scroll) * 100) if max_scroll > 0 else 0
+                scroll_indicator = f" [Scroll: {scroll_pct}%]"
+                scroll_x = self.renderer.char_width - len(scroll_indicator) - 1
+                if scroll_x > 0:
+                    self.renderer.write(scroll_x, input_y - 1, scroll_indicator, 
+                                      self.renderer.COLORS['menu_normal'])
         
         # Draw prompt and input
         prompt = self.get_prompt()

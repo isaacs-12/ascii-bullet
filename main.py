@@ -6,7 +6,7 @@ Main entry point for the game
 
 import sys
 import pygame
-from src.game import Game
+from src.core.game import Game
 
 
 def main():

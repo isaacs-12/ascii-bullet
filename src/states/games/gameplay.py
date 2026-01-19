@@ -2,9 +2,9 @@
 
 import pygame
 from src.states.base_state import BaseState
-from src.entities import Player
-from src.camera import Camera
-from src.level import Level, LEVEL_1
+from src.core.entities import Player
+from src.core.camera import Camera
+from src.core.level import Level, LEVEL_1
 
 
 class GameplayState(BaseState):

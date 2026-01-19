@@ -3,9 +3,9 @@
 import sys
 import time
 import pygame
-from src.terminal_renderer import TerminalRenderer
+from src.core.terminal_renderer import TerminalRenderer
 from src.states.main_menu import MainMenuState
-from src.save_system import SaveSystem
+from src.core.save_system import SaveSystem
 
 
 class Game:

@@ -3,8 +3,8 @@ Unit tests for Python script execution in restricted environment
 """
 
 import unittest
-from src.script_executor import ScriptExecutor
-from src.filesystem import VirtualFileSystem
+from src.unix.script_executor import ScriptExecutor
+from src.unix.filesystem import VirtualFileSystem
 
 
 class TestScriptExecutor(unittest.TestCase):

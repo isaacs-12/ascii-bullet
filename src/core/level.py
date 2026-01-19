@@ -3,7 +3,7 @@ Level configuration and generation system
 """
 
 import random
-from src.entities import Enemy
+from src.core.entities import Enemy
 
 
 class LevelConfig:

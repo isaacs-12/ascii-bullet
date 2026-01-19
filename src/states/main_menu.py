@@ -2,12 +2,12 @@
 
 import pygame
 from src.states.base_state import BaseState
-from src.ascii_art import (
+from src.core.ascii_art import (
     BLTHLL_ASCII, get_startup_sequence, get_welcome_text,
     get_help_text, get_about_text
 )
-from src.filesystem import VirtualFileSystem
-from src.text_editor import TextEditor
+from src.unix.filesystem import VirtualFileSystem
+from src.unix.text_editor import TextEditor
 
 
 class MainMenuState(BaseState):
@@ -50,7 +50,7 @@ class MainMenuState(BaseState):
         self.filesystem = VirtualFileSystem(saved_state=saved_fs_state)
         
         # Process manager
-        from src.process_manager import ProcessManager
+        from src.unix.process_manager import ProcessManager
         self.process_manager = ProcessManager(save_system=game.save_system)
         
         # Konami code tracking
@@ -1131,7 +1131,7 @@ class MainMenuState(BaseState):
                         pid = self.process_manager.add_process(f"python {filename}", cpu_usage=2.5, mem_usage=5.0)
                         
                         # Import and use script executor
-                        from src.script_executor import ScriptExecutor
+                        from src.unix.script_executor import ScriptExecutor
                         executor = ScriptExecutor()
                         
                         # Execute with output callback and save callback

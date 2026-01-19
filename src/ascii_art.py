@@ -3,12 +3,13 @@
 
 # Large ASCII art for "BLTHLL" - using standard ASCII characters only
 BLTHLL_ASCII = [
-    r"########  ##       ########  ##     ##  ##       ##",
-    r"##     ## ##          ##     ##     ##  ##       ##",
-    r"##     ## ##          ##     #########  ##       ##",
-    r"########  ##          ##     ##     ##  ##       ##",
-    r"##     ## ##          ##     ##     ##  ##       ##",
-    r"########  ########    ##     ##     ##  ######## ########",
+    r"      ########  ##        ##     ########  ##     ##  ##       ##",
+    r"     ##     ## ##        ##        ##     ##     ##  ##       ##",
+    r"    ##     ## ##        ##        ##     ##     ##  ##       ##",
+    r"   ########  ##        ##        ##     #########  ##       ##",
+    r"  ##     ## ##        ##        ##     ##     ##  ##       ##",
+    r" ##     ## ##        ##        ##     ##     ##  ##       ##",
+    r"########  ########  ########  ##     ##     ##  ######## ########",
 ]
 
 
@@ -21,6 +22,7 @@ def get_startup_sequence():
         "[OK] Initializing bullet patterns...",
         "[OK] Loading player systems...",
         "[OK] Checking save data...",
+        "[OK] Petting my dog...",
         "",
         "System ready.",
         "",
@@ -54,7 +56,7 @@ def get_help_text():
         "  ps          - Static process list",
         "  kill <pid>  - Terminate a process",
         "",
-        "Filesystem commands:",
+        "Available Unix Commands:",
         "  ls / dir       - List directory contents",
         "  cd <path>      - Change directory (TAB to complete)",
       "  cd ..          - Go to parent directory",
@@ -75,7 +77,11 @@ def get_help_text():
       "  sudo <cmd>     - Execute command with root privileges",
       "  echo text > f  - Write to file (overwrites)",
       "  echo text >> f - Append to file",
+      "  man <topic>    - View manual page for a command (e.g. 'man python')",
+      "",
+      "Supported Languages:",
       "  python <file>  - Execute Python script (or 'run')",
+      "  readme <file>  - View README file (or 'man')",
         "",
     ]
 

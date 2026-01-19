@@ -64,7 +64,7 @@ class TerminalRenderer:
             (self.window_width, self.window_height),
             pygame.RESIZABLE
         )
-        pygame.display.set_caption("ASCII BULLET HELL")
+        pygame.display.set_caption("BULLET HELL TERMINAL")
         
         # Set window icon
         try:

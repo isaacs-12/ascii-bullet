@@ -14,6 +14,214 @@ import sys
 from io import StringIO
 
 
+class VirtualFile:
+    """File-like object that works with the virtual filesystem"""
+    
+    def __init__(self, filesystem, filename, mode, save_callback=None):
+        """
+        Initialize virtual file
+        
+        Args:
+            filesystem: VirtualFileSystem instance
+            filename: Name of file
+            mode: File mode ('r', 'w', 'a', 'x', etc.)
+            save_callback: Optional callback to save filesystem after modifications
+        """
+        self.filesystem = filesystem
+        self.filename = filename
+        self.mode = mode
+        self.save_callback = save_callback
+        self.closed = False
+        self._position = 0
+        self._content = None
+        self._modified = False
+        
+        # Parse mode
+        self.readable = 'r' in mode or '+' in mode
+        self.writable = 'w' in mode or 'a' in mode or 'x' in mode or '+' in mode
+        self.append_mode = 'a' in mode
+        self.exclusive = 'x' in mode
+        
+        # Load existing content if reading or appending
+        if self.readable or self.append_mode:
+            success, content = self.filesystem.read_file(filename)
+            if success:
+                self._content = content if isinstance(content, list) else [content]
+            else:
+                self._content = []
+        
+        # For write mode, start with empty content
+        if 'w' in mode:
+            self._content = []
+        
+        # For append mode, position at end
+        if self.append_mode:
+            self._position = len(self._content) if self._content else 0
+        
+        # Check exclusive mode
+        if self.exclusive:
+            if self.filesystem.file_exists(filename):
+                raise FileExistsError(f"[Errno 17] File exists: '{filename}'")
+    
+    def read(self, size=-1):
+        """Read content from file"""
+        if not self.readable:
+            raise ValueError("File not open for reading")
+        if self.closed:
+            raise ValueError("I/O operation on closed file")
+        
+        if self._content is None:
+            return ""
+        
+        # Read from current position
+        if size == -1:
+            # Read all remaining
+            result = '\n'.join(self._content[self._position:])
+            self._position = len(self._content)
+        else:
+            # Read up to size characters (simplified - reads by lines)
+            lines = []
+            chars_read = 0
+            for line in self._content[self._position:]:
+                line_with_newline = line + '\n'
+                if chars_read + len(line_with_newline) <= size:
+                    lines.append(line)
+                    chars_read += len(line_with_newline)
+                    self._position += 1
+                else:
+                    break
+            result = '\n'.join(lines)
+        
+        return result
+    
+    def readline(self):
+        """Read a single line"""
+        if not self.readable:
+            raise ValueError("File not open for reading")
+        if self.closed:
+            raise ValueError("I/O operation on closed file")
+        
+        if self._content is None or self._position >= len(self._content):
+            return ""
+        
+        line = self._content[self._position] + '\n'
+        self._position += 1
+        return line
+    
+    def readlines(self):
+        """Read all lines"""
+        if not self.readable:
+            raise ValueError("File not open for reading")
+        if self.closed:
+            raise ValueError("I/O operation on closed file")
+        
+        if self._content is None:
+            return []
+        
+        lines = [line + '\n' for line in self._content[self._position:]]
+        self._position = len(self._content)
+        return lines
+    
+    def write(self, s):
+        """Write string to file"""
+        if not self.writable:
+            raise ValueError("File not open for writing")
+        if self.closed:
+            raise ValueError("I/O operation on closed file")
+        
+        if self._content is None:
+            self._content = []
+        
+        # Split by newlines and add lines
+        lines = s.split('\n')
+        for i, line in enumerate(lines):
+            if i == 0 and self.append_mode and self._position < len(self._content):
+                # Append to last line in append mode
+                self._content[-1] += line
+            else:
+                if i == 0 and self._position < len(self._content):
+                    # Overwrite mode - replace line at position
+                    self._content[self._position] = line
+                    self._position += 1
+                else:
+                    # Insert new line
+                    if self.append_mode:
+                        self._content.append(line)
+                    else:
+                        if self._position < len(self._content):
+                            self._content.insert(self._position, line)
+                        else:
+                            self._content.append(line)
+                        self._position += 1
+        
+        self._modified = True
+        return len(s)
+    
+    def writelines(self, lines):
+        """Write list of lines to file"""
+        if not self.writable:
+            raise ValueError("File not open for writing")
+        if self.closed:
+            raise ValueError("I/O operation on closed file")
+        
+        if self._content is None:
+            self._content = []
+        
+        for line in lines:
+            # Remove trailing newline if present (writelines doesn't add them)
+            line_clean = line.rstrip('\n')
+            if self.append_mode:
+                self._content.append(line_clean)
+            else:
+                if self._position < len(self._content):
+                    self._content[self._position] = line_clean
+                    self._position += 1
+                else:
+                    self._content.append(line_clean)
+                    self._position += 1
+        
+        self._modified = True
+        return None
+    
+    def close(self):
+        """Close the file and save if modified"""
+        if self.closed:
+            return
+        
+        if self._modified and self.writable:
+            # Save to filesystem
+            if self.filesystem.file_exists(self.filename):
+                self.filesystem.write_file(self.filename, self._content, append=False)
+            else:
+                self.filesystem.create_file(self.filename, self._content)
+            
+            # Trigger save callback
+            if self.save_callback:
+                self.save_callback()
+        
+        self.closed = True
+    
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit"""
+        self.close()
+        return False  # Don't suppress exceptions
+    
+    def __iter__(self):
+        """Make file iterable"""
+        return self
+    
+    def __next__(self):
+        """Next line for iteration"""
+        line = self.readline()
+        if not line:
+            raise StopIteration
+        return line
+
+
 class ScriptTimeoutError(Exception):
     """Raised when script execution times out"""
     pass
@@ -22,16 +230,18 @@ class ScriptTimeoutError(Exception):
 class GameScriptAPI:
     """Safe API that scripts can use to interact with the game"""
     
-    def __init__(self, filesystem, output_callback):
+    def __init__(self, filesystem, output_callback, save_callback=None):
         """
         Initialize the script API
         
         Args:
             filesystem: VirtualFileSystem instance
             output_callback: Function to call with output text
+            save_callback: Optional function to call after filesystem modifications
         """
         self.filesystem = filesystem
         self._output = output_callback
+        self._save_callback = save_callback
     
     def read_file(self, filename):
         """
@@ -139,6 +349,60 @@ class GameScriptAPI:
         if not self.filesystem.file_exists(filename):
             return None
         return self.filesystem.get_file_owner(filename)
+    
+    def create_file(self, filename, content=""):
+        """
+        Create a new file in the current directory
+        
+        Args:
+            filename: Name of file to create
+            content: Initial content (string or list of strings)
+            
+        Returns:
+            tuple: (success: bool, error_message: str or None)
+            If success is True, error_message is None
+            If success is False, error_message contains the error
+        """
+        success, error = self.filesystem.create_file(filename, content)
+        if success and self._save_callback:
+            self._save_callback()
+        return (success, error)
+    
+    def write_file(self, filename, content, append=False):
+        """
+        Write content to a file (overwrites or appends)
+        
+        Args:
+            filename: Name of file
+            content: Content to write (string or list of strings)
+            append: If True, append instead of overwrite (default False)
+            
+        Returns:
+            tuple: (success: bool, error_message: str or None)
+            If success is True, error_message is None
+            If success is False, error_message contains the error
+        """
+        success, error = self.filesystem.write_file(filename, content, append=append)
+        if success and self._save_callback:
+            self._save_callback()
+        return (success, error)
+    
+    def delete_file(self, filename):
+        """
+        Delete a file from the current directory
+        
+        Args:
+            filename: Name of file to delete
+            
+        Returns:
+            tuple: (success: bool, error_message: str or None)
+            If success is True, error_message is None
+            If success is False, error_message contains the error
+        """
+        success, error = self.filesystem.delete_file(filename)
+        if success and self._save_callback:
+            self._save_callback()
+        return (success, error)
 
 
 class ScriptExecutor:
@@ -165,6 +429,26 @@ class ScriptExecutor:
         Returns:
             Dictionary of safe globals
         """
+        # Create a safe open() function that uses VirtualFile
+        def safe_open(filename, mode='r', buffering=-1, encoding=None, errors=None, newline=None, closefd=True, opener=None):
+            """
+            Safe open() function that works with virtual filesystem
+            
+            Args:
+                filename: Name of file to open
+                mode: File mode ('r', 'w', 'a', 'x', etc.)
+                Other args are ignored (for compatibility)
+            
+            Returns:
+                VirtualFile object
+            """
+            return VirtualFile(
+                game_api.filesystem,
+                filename,
+                mode,
+                game_api._save_callback
+            )
+        
         # Start with safe builtins
         safe_globals = {
             '__builtins__': {
@@ -205,9 +489,11 @@ class ScriptExecutor:
                 '_print_': PrintCollector,
                 '_getiter_': guarded_iter_unpack_sequence,
                 
+                # Safe file I/O
+                'open': safe_open,
+                
                 # Prevent access to dangerous builtins
                 '__import__': None,
-                'open': None,
                 'exec': None,
                 'eval': None,
                 'compile': None,
@@ -225,7 +511,7 @@ class ScriptExecutor:
         
         return safe_globals
     
-    def execute(self, code, filesystem, output_callback):
+    def execute(self, code, filesystem, output_callback, save_callback=None):
         """
         Execute Python code in a restricted environment
         
@@ -233,6 +519,7 @@ class ScriptExecutor:
             code: Python code string or list of lines
             filesystem: VirtualFileSystem instance
             output_callback: Function to call with each output line
+            save_callback: Optional function to call after filesystem modifications
             
         Returns:
             tuple: (success: bool, error_message: str or None)
@@ -242,7 +529,7 @@ class ScriptExecutor:
             code = '\n'.join(code)
         
         # Create game API
-        game_api = GameScriptAPI(filesystem, output_callback)
+        game_api = GameScriptAPI(filesystem, output_callback, save_callback)
         
         # Compile code with restrictions
         try:

@@ -1,11 +1,23 @@
 """
 Save system for persistent game data
+
+IMPORTANT: Save files are user-specific and stored in:
+- Development: ~/.ascii-bullet/save.json
+- Built games: ~/.ascii-bullet-release/save.json
+
+This ensures built games have separate saves from development.
+Each user gets their own save file. No save data is bundled with the game.
+When a new player runs the game, they automatically get a fresh save file.
 """
 
 import json
 import os
+import sys
 from pathlib import Path
 from datetime import datetime
+
+# Save file version - increment this when save format changes
+SAVE_VERSION = "0.1.0"
 
 
 class SaveSystem:
@@ -14,14 +26,26 @@ class SaveSystem:
     def __init__(self):
         """Initialize save system"""
         # Get save file location (in user's home directory)
+        # Use different directories for development vs built games
         home = Path.home()
-        self.save_dir = home / ".ascii-bullet"
+        
+        # Detect if running from PyInstaller bundle
+        is_built = getattr(sys, 'frozen', False)
+        
+        if is_built:
+            # Built game - use separate save directory
+            self.save_dir = home / ".ascii-bullet-release"
+        else:
+            # Development - use development save directory
+            self.save_dir = home / ".ascii-bullet"
+        
         self.save_file = self.save_dir / "save.json"
         
         # Ensure save directory exists
         self.save_dir.mkdir(exist_ok=True)
         
         # Load or initialize save data
+        # This will create a fresh save file if one doesn't exist
         self.data = self._load()
     
     def _load(self):
@@ -29,17 +53,24 @@ class SaveSystem:
         if self.save_file.exists():
             try:
                 with open(self.save_file, 'r') as f:
-                    return json.load(f)
+                    data = json.load(f)
+                    # Check if save version matches (for future migrations)
+                    if data.get("version") != SAVE_VERSION:
+                        # Version mismatch - could add migration logic here
+                        # For now, we'll use the existing save but update version
+                        data["version"] = SAVE_VERSION
+                    return data
             except (json.JSONDecodeError, IOError):
                 # Corrupted save file, start fresh
                 return self._default_save_data()
         else:
+            # No save file exists - create fresh save for new user
             return self._default_save_data()
     
     def _default_save_data(self):
-        """Get default save data structure"""
+        """Get default save data structure - always returns a fresh save state"""
         return {
-            "version": "0.1.0",
+            "version": SAVE_VERSION,
             "created": datetime.now().isoformat(),
             "last_played": datetime.now().isoformat(),
             
@@ -53,6 +84,7 @@ class SaveSystem:
             "installed_packages": [],  # List of brew-installed package names
             "virus_killed": False,  # Whether the player killed the virus process
             "intro_shown": False,  # Whether the intro sequence has been shown
+            "save_prompt_shown": False,  # Whether we've asked about using existing save (built games only)
             "filesystem_explored": {
                 "directories_visited": [],
                 "files_read": []
@@ -219,6 +251,34 @@ class SaveSystem:
         """Mark that the intro sequence has been shown"""
         self.data["intro_shown"] = True
         self.save()
+    
+    # Save prompt (for built games)
+    def should_prompt_for_existing_save(self):
+        """
+        Check if we should prompt the user about using an existing save file.
+        Only applies to built games that have an existing save file.
+        """
+        import sys
+        is_built = getattr(sys, 'frozen', False)
+        
+        if not is_built:
+            # Development mode - never prompt
+            return False
+        
+        # Built game: check if save exists and we haven't asked yet
+        if self.save_file.exists() and not self.data.get("save_prompt_shown", False):
+            return True
+        
+        return False
+    
+    def mark_save_prompt_shown(self):
+        """Mark that we've shown the save prompt (user won't be asked again)"""
+        self.data["save_prompt_shown"] = True
+        self.save()
+    
+    def has_existing_save(self):
+        """Check if a save file exists"""
+        return self.save_file.exists()
     
     # Filesystem Exploration
     def mark_directory_visited(self, path):

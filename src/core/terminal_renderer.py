@@ -3,6 +3,8 @@ Terminal-style renderer for the game
 Provides a retro ASCII terminal aesthetic
 """
 
+import os
+import sys
 import pygame
 
 
@@ -67,11 +69,20 @@ class TerminalRenderer:
         pygame.display.set_caption("BULLET HELL TERMINAL")
         
         # Set window icon
+        # Handle both development and PyInstaller bundled environments
         try:
-            icon_path = "src/assets/bllthll.png"
-            icon = pygame.image.load(icon_path)
-            pygame.display.set_icon(icon)
-        except (pygame.error, FileNotFoundError):
+            if getattr(sys, 'frozen', False):
+                # Running in a PyInstaller bundle
+                base_path = sys._MEIPASS
+            else:
+                # Running in development
+                base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            
+            icon_path = os.path.join(base_path, "src", "assets", "bllthll.png")
+            if os.path.exists(icon_path):
+                icon = pygame.image.load(icon_path)
+                pygame.display.set_icon(icon)
+        except (pygame.error, FileNotFoundError, AttributeError):
             # If icon file doesn't exist, continue without it
             pass
         

@@ -40,6 +40,10 @@ class MainMenuState(BaseState):
         self.showing_intro = False
         self.intro_page = 0  # 0 = page 1, 1 = page 2, 2 = done
         self.intro_waiting_for_key = False
+        
+        # Save prompt state (for built games with existing saves)
+        self.showing_save_prompt = False
+        self.save_prompt_waiting_for_input = False
         self.intro_text_pages = [
             [
                 "Welcome to BLLTHLL. What you're looking at isn't your computer's terminal.",
@@ -57,7 +61,7 @@ class MainMenuState(BaseState):
             [
                 "In this computer we've left you with are a selection of tools you might know",
                 "well, or that you might need some introduction to. We don't want you to be",
-                "totally alone, soyou can always use `help` as a reminder of what you have at",
+                "totally alone, so you can always use `help` as a reminder of what you have at",
                 "your disposal.Solutions to puzzles can usually be found multiple ways, but",
                 "as a tip, look around in the filesystem, and remember the tools we've given you.",
                 "...",
@@ -126,6 +130,72 @@ class MainMenuState(BaseState):
         """Handle keyboard input for terminal"""
         for event in events:
             if event.type == pygame.KEYDOWN:
+                # Handle save prompt (for built games with existing saves)
+                if self.showing_save_prompt:
+                    if not self.is_typing and not self.save_prompt_waiting_for_input and not self.typing_queue:
+                        self.save_prompt_waiting_for_input = True
+                    
+                    if self.save_prompt_waiting_for_input and not self.is_typing:
+                        # Process yes/no input
+                        if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
+                            response = self.input_buffer.strip().lower()
+                            self.input_buffer = ""
+                            
+                            if response in ['yes', 'y']:
+                                # User wants to use existing save
+                                self.add_output("Loading existing save...")
+                                self.add_output("")
+                                # Reload save data (it's already loaded, but mark prompt as shown)
+                                self.game.save_system.mark_save_prompt_shown()
+                                # Reload data from file to ensure we have the latest
+                                self.game.save_system.data = self.game.save_system._load()
+                                # Reload filesystem state
+                                saved_fs_state = self.game.save_system.get_filesystem_state()
+                                self.filesystem = VirtualFileSystem(saved_state=saved_fs_state)
+                                # Reload secrets
+                                saved_secrets = self.game.save_system.get_secrets_found()
+                                self.secret_commands_found = set(saved_secrets)
+                                # Continue to intro or main screen
+                                self.showing_save_prompt = False
+                                if not self.game.save_system.has_intro_been_shown():
+                                    self.showing_intro = True
+                                    self.intro_page = 0
+                                    self.intro_waiting_for_key = False
+                                    self._start_intro_page(0)
+                                else:
+                                    self._show_main_screen()
+                            elif response in ['no', 'n']:
+                                # User wants to start fresh
+                                self.add_output("Starting fresh...")
+                                self.add_output("")
+                                # Reset save to default
+                                self.game.save_system.reset_save()
+                                self.game.save_system.mark_save_prompt_shown()
+                                # Reload filesystem with fresh state
+                                self.filesystem = VirtualFileSystem(saved_state=None)
+                                self.secret_commands_found = set()
+                                # Continue to intro or main screen
+                                self.showing_save_prompt = False
+                                if not self.game.save_system.has_intro_been_shown():
+                                    self.showing_intro = True
+                                    self.intro_page = 0
+                                    self.intro_waiting_for_key = False
+                                    self._start_intro_page(0)
+                                else:
+                                    self._show_main_screen()
+                            else:
+                                # Invalid input, ask again
+                                self.add_output("Please type 'yes' or 'no'.")
+                                self.add_output("")
+                                self.add_output("> ")
+                                return
+                        elif event.key == pygame.K_BACKSPACE:
+                            if len(self.input_buffer) > 0:
+                                self.input_buffer = self.input_buffer[:-1]
+                        elif event.unicode and event.unicode.isprintable():
+                            self.input_buffer += event.unicode
+                        return  # Don't process other keys during save prompt
+                
                 # Handle intro sequence
                 if self.showing_intro:
                     # If typing is complete and we're not already waiting, mark as waiting
@@ -179,6 +249,9 @@ class MainMenuState(BaseState):
                 self._track_konami_code(event)
                 
                 if event.key == pygame.K_RETURN:
+                    # Don't process normal commands during save prompt
+                    if self.showing_save_prompt:
+                        return
                     # Check if waiting for password
                     if self.waiting_for_password:
                         self._check_sudo_password(self.password_buffer)
@@ -383,8 +456,14 @@ class MainMenuState(BaseState):
         self.booting = False
         self.output_lines = []
         
+        # Check if we should prompt about existing save (built games only)
+        if self.game.save_system.should_prompt_for_existing_save():
+            # Show save prompt
+            self.showing_save_prompt = True
+            self.save_prompt_waiting_for_input = False
+            self._show_save_prompt()
         # Check if intro should be shown
-        if not self.game.save_system.has_intro_been_shown():
+        elif not self.game.save_system.has_intro_been_shown():
             # Show intro sequence
             self.showing_intro = True
             self.intro_page = 0
@@ -393,6 +472,21 @@ class MainMenuState(BaseState):
         else:
             # Skip intro, show main screen
             self._show_main_screen()
+    
+    def _show_save_prompt(self):
+        """Show prompt asking if user wants to use existing save"""
+        self.output_lines = []
+        prompt_text = [
+            "Existing save file detected.",
+            "",
+            "Would you like to continue from your previous save?",
+            "",
+            "Type 'yes' to load your existing save, or 'no' to start fresh.",
+            "",
+            "> "
+        ]
+        self.type_output(prompt_text, delay=15)
+        self.save_prompt_waiting_for_input = True
     
     def _start_intro_page(self, page_index):
         """Start showing an intro page"""
@@ -605,25 +699,36 @@ class MainMenuState(BaseState):
                 self.add_output(f"Total Playtime: {format_time(total_playtime)}")
                 self.add_output("")
             
-            self.add_output("Bullet Hell:")
-            self.add_output(f"  Games Played: {total_games}")
-            self.add_output(f"  Total Time Survived: {total_time}s")
+            # Bullet Hell stats - only show if there are meaningful stats
             bullet_hell_time = stats.get('bullet_hell_playtime_seconds', 0)
-            if bullet_hell_time > 0:
-                self.add_output(f"  Total Playtime: {format_time(bullet_hell_time)}")
-            self.add_output(f"  Enemies Depleted: {stats.get('enemies_depleted', 0)}")
+            enemies_depleted = stats.get('enemies_depleted', 0)
             closest = stats.get('closest_call', 999)
-            if closest < 999:
-                self.add_output(f"  Closest Call: {closest:.2f} tiles")
-            self.add_output("")
-            self.add_output("Set Game:")
+            has_bullet_hell_stats = (total_games > 0 or total_time > 0 or bullet_hell_time > 0 or 
+                                    enemies_depleted > 0 or closest < 999)
+            
+            if has_bullet_hell_stats:
+                self.add_output("Bullet Hell:")
+                if total_games > 0:
+                    self.add_output(f"  Games Played: {total_games}")
+                if total_time > 0:
+                    self.add_output(f"  Total Time Survived: {total_time}s")
+                if bullet_hell_time > 0:
+                    self.add_output(f"  Total Playtime: {format_time(bullet_hell_time)}")
+                if enemies_depleted > 0:
+                    self.add_output(f"  Enemies Depleted: {enemies_depleted}")
+                if closest < 999:
+                    self.add_output(f"  Closest Call: {closest:.2f} tiles")
+                self.add_output("")
+            
+            # Set Game stats - only show if there are games played
             set_games = stats.get('set_games_played', 0)
-            set_wins = stats.get('set_games_won', 0)
-            set_losses = stats.get('set_games_lost', 0)
-            total_sets = stats.get('total_sets_found', 0)
-            best_score = stats.get('best_set_score', 0)
-            set_game_time = stats.get('set_game_playtime_seconds', 0)
             if set_games > 0:
+                self.add_output("Set Game:")
+                set_wins = stats.get('set_games_won', 0)
+                set_losses = stats.get('set_games_lost', 0)
+                total_sets = stats.get('total_sets_found', 0)
+                best_score = stats.get('best_set_score', 0)
+                set_game_time = stats.get('set_game_playtime_seconds', 0)
                 win_rate = (set_wins / set_games) * 100
                 self.add_output(f"  Games Played: {set_games}")
                 self.add_output(f"  Games Won: {set_wins} ({win_rate:.1f}%)")
@@ -633,18 +738,16 @@ class MainMenuState(BaseState):
                     self.add_output(f"  Best Score: {best_score} sets")
                 if set_game_time > 0:
                     self.add_output(f"  Total Playtime: {format_time(set_game_time)}")
-            else:
-                self.add_output("  No games played yet")
-            self.add_output("")
+                self.add_output("")
             
-            # Asteroids stats
-            self.add_output("Asteroids:")
+            # Asteroids stats - only show if there are games played
             asteroids_games = stats.get('asteroids_games_played', 0)
-            asteroids_best = stats.get('asteroids_best_score', 0)
-            asteroids_total = stats.get('asteroids_total_score', 0)
-            asteroids_stage = stats.get('asteroids_highest_stage', 0)
-            asteroids_time = stats.get('asteroids_playtime_seconds', 0)
             if asteroids_games > 0:
+                self.add_output("Asteroids:")
+                asteroids_best = stats.get('asteroids_best_score', 0)
+                asteroids_total = stats.get('asteroids_total_score', 0)
+                asteroids_stage = stats.get('asteroids_highest_stage', 0)
+                asteroids_time = stats.get('asteroids_playtime_seconds', 0)
                 self.add_output(f"  Games Played: {asteroids_games}")
                 if asteroids_best > 0:
                     self.add_output(f"  Best Score: {asteroids_best:,}")
@@ -655,9 +758,7 @@ class MainMenuState(BaseState):
                     self.add_output(f"  Highest Stage: {asteroids_stage}")
                 if asteroids_time > 0:
                     self.add_output(f"  Total Playtime: {format_time(asteroids_time)}")
-            else:
-                self.add_output("  No games played yet")
-            self.add_output("")
+                self.add_output("")
             
             # Oregon Trail stats
             oregon_time = stats.get('oregon_trail_playtime_seconds', 0)
@@ -1588,6 +1689,9 @@ class MainMenuState(BaseState):
     
     def get_prompt(self):
         """Get the current prompt string with directory"""
+        # If showing save prompt, show empty prompt (prompt is in output)
+        if self.showing_save_prompt:
+            return ""
         # If waiting for password, show password prompt
         if self.waiting_for_password:
             return "[sudo] password: "
@@ -1698,7 +1802,7 @@ class MainMenuState(BaseState):
         self.renderer.write(0, input_y, input_text, self.renderer.COLORS['menu_selected'])
         
         # Draw cursor
-        if self.cursor_visible and not self.booting:
+        if self.cursor_visible and (not self.booting or self.showing_save_prompt):
             cursor_x = len(input_text)
             if cursor_x < self.renderer.char_width:
                 self.renderer.write(cursor_x, input_y, "█", self.renderer.COLORS['menu_selected'])

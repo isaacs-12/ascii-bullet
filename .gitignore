@@ -37,3 +37,8 @@ wheels/
 .DS_Store
 Thumbs.db
 
+# Game saves (user-specific, should never be committed)
+.ascii-bullet/
+save.json
+*.save
+

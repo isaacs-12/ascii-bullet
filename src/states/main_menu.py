@@ -575,7 +575,7 @@ class MainMenuState(BaseState):
             self.add_output("Starting new game...")
             self.add_output("")
             # Launch gameplay state, passing this menu state to return to
-            from src.states.gameplay import GameplayState
+            from src.states.games.gameplay import GameplayState
             self.game.change_state(GameplayState(self.game, previous_state=self))
         
         elif cmd_lower in ["continue", "load", "resume"]:
@@ -686,7 +686,7 @@ class MainMenuState(BaseState):
             
             if filename:
                 # Launch README viewer
-                from src.states.readme_viewer import ReadmeViewerState
+                from src.states.unix_utils.readme_viewer import ReadmeViewerState
                 readme_state = ReadmeViewerState(self.game, self.filesystem, filename, self)
                 self.game.change_state(readme_state)
                 # Track file read
@@ -833,7 +833,7 @@ class MainMenuState(BaseState):
                 filename = parts[1].strip()
                 try:
                     # Switch to editor state
-                    from src.states.editor import EditorState
+                    from src.states.unix_utils.editor import EditorState
                     editor = EditorState(self.game, self.filesystem, filename, self)
                     self.game.change_state(editor)
                 except Exception as e:
@@ -854,7 +854,7 @@ class MainMenuState(BaseState):
                     filename = parts[1].strip()
                     try:
                         # Switch to editor state (same as vim)
-                        from src.states.editor import EditorState
+                        from src.states.unix_utils.editor import EditorState
                         editor = EditorState(self.game, self.filesystem, filename, self, editor_name="emacs")
                         self.game.change_state(editor)
                     except Exception as e:
@@ -951,7 +951,7 @@ class MainMenuState(BaseState):
         elif cmd_lower == "start spacebullets":
             # Launch Galaga game (only if virus was killed)
             if self.game.save_system.is_virus_killed():
-                from src.states.galaga_gameplay import GalagaGameplayState
+                from src.states.games.galaga_gameplay import GalagaGameplayState
                 galaga_state = GalagaGameplayState(self.game, self)
                 self.game.change_state(galaga_state)
                 self._mark_secret_found("arcade_master")
@@ -961,14 +961,14 @@ class MainMenuState(BaseState):
         
         elif cmd_lower == "start set":
             # Launch Set card game
-            from src.states.set_game import SetGameState
+            from src.states.games.set_game import SetGameState
             set_state = SetGameState(self.game, self)
             self.game.change_state(set_state)
             self._mark_secret_found("set_player")
         
         elif cmd_lower == "start oregon":
             # Launch Oregon Trail game
-            from src.states.oregon_trail import OregonTrailState
+            from src.states.games.oregon_trail import OregonTrailState
             oregon_state = OregonTrailState(self.game, self)
             self.game.change_state(oregon_state)
             self._mark_secret_found("oregon_trail")
@@ -976,7 +976,7 @@ class MainMenuState(BaseState):
         elif cmd_lower == "start asteroids":
             # Launch Asteroids game
             try:
-                from src.states.asteroids_gameplay import AsteroidsGameplayState
+                from src.states.games.asteroids_gameplay import AsteroidsGameplayState
                 asteroids_state = AsteroidsGameplayState(self.game, self)
                 self.game.change_state(asteroids_state)
                 self._mark_secret_found("asteroids_player")
@@ -986,7 +986,7 @@ class MainMenuState(BaseState):
         elif cmd_lower == "start minesweeper":
             # Launch Minesweeper game
             try:
-                from src.states.minesweeper import MinesweeperState
+                from src.states.games.minesweeper import MinesweeperState
                 minesweeper_state = MinesweeperState(self.game, self)
                 self.game.change_state(minesweeper_state)
                 self._mark_secret_found("minesweeper")
@@ -996,7 +996,7 @@ class MainMenuState(BaseState):
         
         elif cmd_lower in ["top", "htop"]:
             # Interactive process viewer
-            from src.states.top_viewer import TopViewerState
+            from src.states.unix_utils.top_viewer import TopViewerState
             top_state = TopViewerState(self.game, self.process_manager, self)
             self.game.change_state(top_state)
             self._mark_secret_found("process_viewer")

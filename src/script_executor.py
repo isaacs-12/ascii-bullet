@@ -64,6 +64,81 @@ class GameScriptAPI:
     def file_exists(self, filename):
         """Check if a file exists"""
         return self.filesystem.file_exists(filename)
+    
+    def get_file_size(self, filename):
+        """
+        Get the size of a file in bytes
+        
+        Args:
+            filename: Name of file
+            
+        Returns:
+            int: File size in bytes, or None if file doesn't exist
+        """
+        success, content = self.filesystem.read_file(filename)
+        if not success:
+            return None
+        
+        # Calculate size: sum of line lengths + newlines
+        if isinstance(content, list):
+            # Each line + newline character
+            return sum(len(line) + 1 for line in content)
+        else:
+            return len(content)
+    
+    def stat(self, filename):
+        """
+        Get file statistics/metadata
+        
+        Args:
+            filename: Name of file
+            
+        Returns:
+            dict with keys: size, permissions, owner, exists
+            Returns None if file doesn't exist
+        """
+        if not self.filesystem.file_exists(filename):
+            return None
+        
+        size = self.get_file_size(filename)
+        permissions = self.filesystem.get_permissions(filename)
+        owner = self.filesystem.get_file_owner(filename)
+        
+        return {
+            'size': size,  # Size in bytes
+            'size_bits': size * 8,  # Size in bits
+            'permissions': permissions,
+            'owner': owner,
+            'exists': True
+        }
+    
+    def get_permissions(self, filename):
+        """
+        Get file permissions string
+        
+        Args:
+            filename: Name of file
+            
+        Returns:
+            str: Permission string (e.g., "rwx" or "rwxrwxrwx"), or None if not found
+        """
+        if not self.filesystem.file_exists(filename):
+            return None
+        return self.filesystem.get_permissions(filename)
+    
+    def get_owner(self, filename):
+        """
+        Get file owner
+        
+        Args:
+            filename: Name of file
+            
+        Returns:
+            str: Owner name ("pilot" or "root"), or None if not found
+        """
+        if not self.filesystem.file_exists(filename):
+            return None
+        return self.filesystem.get_file_owner(filename)
 
 
 class ScriptExecutor:

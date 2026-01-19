@@ -1,4 +1,4 @@
-.PHONY: build clean install-deps help
+.PHONY: build clean install-deps test help
 
 # Variables
 VENV = venv
@@ -15,6 +15,7 @@ help:
 	@echo "  build          - Build executable with timestamp"
 	@echo "  clean          - Remove build artifacts"
 	@echo "  install-deps   - Install PyInstaller in virtual environment"
+	@echo "  test           - Run unit tests"
 	@echo "  help           - Show this help message"
 
 install-deps:
@@ -74,6 +75,12 @@ build: install-deps
 		echo "  Run with: $(RELEASE_DIR)/$(EXECUTABLE_NAME).exe"; \
 	fi
 	@echo ""
+
+test:
+	@echo "Running unit tests..."
+	$(PYTHON) -m unittest discover -s src/tests -p "test_*.py" -v
+	@echo ""
+	@echo "Tests complete!"
 
 clean:
 	@echo "Cleaning build artifacts..."

@@ -630,6 +630,32 @@ class MainMenuState(BaseState):
                 current_path = self.filesystem.get_pwd()
                 self.game.save_system.mark_directory_visited(current_path)
         
+        elif cmd_lower.startswith("readme ") or cmd_lower == "readme":
+            # View markdown README file with formatting
+            if cmd_lower == "readme":
+                # Try common README filenames
+                readme_names = ["README.md", "README", "readme.md", "readme"]
+                filename = None
+                for name in readme_names:
+                    success, _ = self.filesystem.read_file(name)
+                    if success:
+                        filename = name
+                        break
+                if not filename:
+                    self.add_output("Error: No README file found. Try 'readme <filename>'")
+                    self.add_output("")
+            else:
+                filename = command[7:].strip()
+            
+            if filename:
+                # Launch README viewer
+                from src.states.readme_viewer import ReadmeViewerState
+                readme_state = ReadmeViewerState(self.game, self.filesystem, filename, self)
+                self.game.change_state(readme_state)
+                # Track file read
+                current_path = self.filesystem.get_pwd()
+                self.game.save_system.mark_file_read(f"{current_path}/{filename}")
+        
         elif cmd_lower.startswith("cat "):
             # Read file
             filename = command[4:].strip()

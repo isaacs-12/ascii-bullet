@@ -6,6 +6,7 @@ from src.core.ascii_art import (
     BLTHLL_ASCII, get_startup_sequence, get_welcome_text,
     get_help_text, get_about_text
 )
+from src.core.puzzle_system import check_puzzles, get_unlocked_game_help_lines
 from src.unix.filesystem import VirtualFileSystem
 from src.unix.text_editor import TextEditor
 
@@ -834,6 +835,10 @@ class MainMenuState(BaseState):
         elif cmd_lower in ["help", "?", "commands"]:
             for line in get_help_text():
                 self.add_output(line)
+                # After "  start       - Begin a new game", add unlocked game start options
+                if line.strip().startswith("start") and "Begin a new game" in line:
+                    for extra in get_unlocked_game_help_lines(self.game.save_system):
+                        self.add_output(extra)
         
         elif cmd_lower in ["about", "info", "version"]:
             for line in get_about_text():
@@ -1286,6 +1291,10 @@ class MainMenuState(BaseState):
             if success:
                 self.add_output(f"Deleted: {filename}")
                 self._save_filesystem()
+                # Check puzzle triggers that depend on rm
+                for _game, msg in self._check_puzzle_triggers("rm"):
+                    self.add_output("")
+                    self.add_output(msg)
             else:
                 self.add_output(error)
             self.add_output("")
@@ -1324,6 +1333,10 @@ class MainMenuState(BaseState):
                 success, error = self.filesystem.set_permissions(filename, permissions)
                 if success:
                     self._save_filesystem()
+                    # Check puzzle triggers that depend on chmod
+                    for _game, msg in self._check_puzzle_triggers("chmod"):
+                        self.add_output("")
+                        self.add_output(msg)
                 else:
                     self.add_output(error)
             else:
@@ -1472,7 +1485,9 @@ class MainMenuState(BaseState):
                 self.add_output("")
         
         elif cmd_lower == "start set":
-            # Launch Set card game
+            # Launch Set card game (only if unlocked via puzzle)
+            if not self.game.save_system.is_game_unlocked("set"):
+                return  # do nothing when locked
             from src.states.games.set_game import SetGameState
             set_state = SetGameState(self.game, self)
             self.game.change_state(set_state)
@@ -1496,7 +1511,9 @@ class MainMenuState(BaseState):
                 self.add_output("start: 'asteroids' - game file not found")
                 self.add_output("")
         elif cmd_lower == "start minesweeper":
-            # Launch Minesweeper game
+            # Launch Minesweeper game (only if unlocked via puzzle)
+            if not self.game.save_system.is_game_unlocked("minesweeper"):
+                return  # do nothing when locked
             try:
                 from src.states.games.minesweeper import MinesweeperState
                 minesweeper_state = MinesweeperState(self.game, self)
@@ -1853,6 +1870,10 @@ class MainMenuState(BaseState):
         """Save current filesystem state"""
         fs_state = self.filesystem.get_state()
         self.game.save_system.save_filesystem(fs_state)
+    
+    def _check_puzzle_triggers(self, trigger):
+        """Run puzzle checks for the given trigger ('rm', 'chmod'). Return list of (game, message) for newly unlocked."""
+        return check_puzzles(self.filesystem, self.game.save_system, trigger)
     
     def _handle_sudo_command(self, command):
         """

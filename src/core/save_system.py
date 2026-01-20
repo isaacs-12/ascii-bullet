@@ -83,6 +83,7 @@ class SaveSystem:
             "secret_commands_found": [],  # List of secret command IDs
             "installed_packages": [],  # List of brew-installed package names
             "virus_killed": False,  # Whether the player killed the virus process
+            "unlocked_games": [],  # Puzzle-gated games: e.g. ["minesweeper", "set"]
             "intro_shown": False,  # Whether the intro sequence has been shown
             "save_prompt_shown": False,  # Whether we've asked about using existing save (built games only)
             "filesystem_explored": {
@@ -241,6 +242,18 @@ class SaveSystem:
     def is_virus_killed(self):
         """Check if the virus has been killed"""
         return self.data.get("virus_killed", False)
+    
+    def is_game_unlocked(self, game_key):
+        """Check if a puzzle-gated game (e.g. 'minesweeper', 'set') is unlocked."""
+        return game_key in self.data.get("unlocked_games", [])
+    
+    def unlock_game(self, game_key):
+        """Unlock a puzzle-gated game and persist."""
+        u = self.data.get("unlocked_games", [])
+        if game_key not in u:
+            u = list(u) + [game_key]
+            self.data["unlocked_games"] = u
+            self.save()
     
     # Intro sequence
     def has_intro_been_shown(self):

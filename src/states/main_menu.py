@@ -837,8 +837,9 @@ class MainMenuState(BaseState):
         elif cmd_lower.startswith("ls -"):
             # List files with details (including permissions)
             args = cmd_lower[4:].strip()
+            show_hidden = "a" in args  # Show hidden files if -a flag is present
             if args in ["l", "la", "al", "a", ""]:
-                items = self.filesystem.list_directory()
+                items = self.filesystem.list_directory(show_hidden=show_hidden)
                 if items:
                     # Show detailed listing with permissions and owner
                     for item in items:
@@ -871,8 +872,8 @@ class MainMenuState(BaseState):
             self.game.save_system.mark_directory_visited(current_path)
         
         elif cmd_lower in ["ls", "dir"]:
-            # List directory contents
-            contents = self.filesystem.list_directory()
+            # List directory contents (hidden files not shown by default)
+            contents = self.filesystem.list_directory(show_hidden=False)
             if contents:
                 # Format in columns for better display
                 self.add_output("  ".join(contents))
@@ -1080,6 +1081,77 @@ class MainMenuState(BaseState):
             else:
                 self.add_output(content)
                 self.add_output("")
+        
+        elif cmd_lower.startswith("stat "):
+            # Show file statistics
+            filename = command[5:].strip()
+            if not filename:
+                self.add_output("stat: missing file operand")
+                self.add_output("Usage: stat <filename>")
+                self.add_output("")
+                return
+            
+            # Check if it's a directory first
+            current_dir = self.filesystem.get_current_directory()
+            is_dir = False
+            dir_name = filename.rstrip('/')
+            if 'dirs' in current_dir and dir_name in current_dir['dirs']:
+                is_dir = True
+            else:
+                # Check user-created directories
+                current_path = self.filesystem.get_pwd()
+                dir_path = f"{current_path}/{dir_name}/"
+                if dir_path in self.filesystem.user_created_dirs:
+                    is_dir = True
+            
+            # Check if file/directory exists
+            if is_dir:
+                # Directory exists
+                size = 0
+            elif self.filesystem.file_exists(filename):
+                # File exists - get its size
+                success, content = self.filesystem.read_file(filename)
+                if success:
+                    if isinstance(content, list):
+                        size = sum(len(str(line)) + 1 for line in content)  # +1 for newline
+                    else:
+                        size = len(str(content))
+                else:
+                    # Permission denied - still show stat but with size 0
+                    size = 0
+            else:
+                self.add_output(f"stat: cannot stat '{filename}': No such file or directory")
+                self.add_output("")
+                return
+            
+            # Get permissions
+            perms = self.filesystem.get_permissions(filename)
+            if not perms:
+                perms = "rwxrwxrwx"
+            
+            # Get owner
+            owner = self.filesystem.get_file_owner(filename)
+            
+            # Determine file type
+            file_type = "directory" if is_dir else "regular file"
+            
+            # Format permissions for display
+            if len(perms) == 3:
+                perms_display = perms + "------"
+            elif len(perms) == 9:
+                perms_display = perms
+            else:
+                perms_display = perms + "-" * (9 - len(perms))
+            
+            # Display stat information (similar to Unix stat command)
+            self.add_output(f"  File: {filename}")
+            self.add_output(f"  Size: {size:<12} Blocks: 0          IO Block: 4096   {file_type}")
+            self.add_output(f"Device: 0h/{0:<10} Inode: 0     Links: 1")
+            self.add_output(f"Access: ({perms_display})  Uid: ({owner})   Gid: (users)")
+            self.add_output(f"Access: 2024-01-01 00:00:00.000000000")
+            self.add_output(f"Modify: 2024-01-01 00:00:00.000000000")
+            self.add_output(f"Change: 2024-01-01 00:00:00.000000000")
+            self.add_output("")
         
         elif cmd_lower.startswith("touch "):
             # Create empty file
@@ -1407,6 +1479,56 @@ class MainMenuState(BaseState):
                 self.add_output(f"kill: invalid process id: {command[5:].strip()}")
                 self.add_output("")
         
+        elif cmd_lower in ["stat", "cat", "touch", "mkdir", "rm", "mv", "chmod", "vim", "vi", "edit", "emacs", "python", "run", "kill", "man", "cd"]:
+            # Commands that require arguments - show usage
+            if cmd_lower == "stat":
+                self.add_output("stat: missing file operand")
+                self.add_output("Usage: stat <filename>")
+            elif cmd_lower == "cat":
+                self.add_output("cat: missing file operand")
+                self.add_output("Usage: cat <filename>")
+            elif cmd_lower == "touch":
+                self.add_output("touch: missing file operand")
+                self.add_output("Usage: touch <filename>")
+            elif cmd_lower == "mkdir":
+                self.add_output("mkdir: missing directory operand")
+                self.add_output("Usage: mkdir <directory>")
+            elif cmd_lower == "rm":
+                self.add_output("rm: missing operand")
+                self.add_output("Usage: rm <filename>")
+            elif cmd_lower == "mv":
+                self.add_output("mv: missing file operand")
+                self.add_output("Usage: mv <source> <destination>")
+            elif cmd_lower == "chmod":
+                self.add_output("chmod: missing operand")
+                self.add_output("Usage: chmod <mode> <filename>")
+            elif cmd_lower in ["vim", "vi", "edit"]:
+                self.add_output(f"{cmd_lower}: missing file operand")
+                self.add_output(f"Usage: {cmd_lower} <filename>")
+            elif cmd_lower == "emacs":
+                self.add_output("emacs: missing file operand")
+                self.add_output("Usage: emacs <filename>")
+            elif cmd_lower in ["python", "run"]:
+                self.add_output(f"{cmd_lower}: missing file operand")
+                self.add_output(f"Usage: {cmd_lower} <script.py>")
+            elif cmd_lower == "kill":
+                self.add_output("kill: missing operand")
+                self.add_output("Usage: kill <pid>")
+            elif cmd_lower == "man":
+                self.add_output("man: missing topic operand")
+                self.add_output("Usage: man <topic>")
+            elif cmd_lower == "cd":
+                # cd without args goes to home (standard Unix behavior)
+                home_path = "home/pilot/blthll"
+                old_path = self.filesystem.current_path[:]
+                success, error = self.filesystem.change_directory(home_path)
+                if success:
+                    self.add_output("")
+                else:
+                    self.add_output(f"cd: {error}")
+                    self.add_output("")
+            self.add_output("")
+        
         elif self._easter_egg_commands(cmd_lower=cmd_lower, command=command):
             return
         
@@ -1447,10 +1569,27 @@ class MainMenuState(BaseState):
         
         # If only one completion, auto-complete it
         if len(completions) == 1:
+            completion = completions[0]
+            # For cd command, add trailing slash to directories to enable further path completion
+            # But only if the completion doesn't already have a path with slash
+            if command == 'cd' and not completion.endswith('/') and not completion == '..' and '/' not in completion:
+                # It's a simple directory name - add slash to enable path continuation
+                completion = completion + '/'
+            elif command == 'cd' and '/' in completion and not completion.endswith('/') and not completion.endswith('/..'):
+                # It's a path completion - add trailing slash
+                completion = completion + '/'
+            
             if len(parts) == 1:
-                self.input_buffer = f"{command} {completions[0]}"
+                self.input_buffer = f"{command} {completion}"
             else:
-                self.input_buffer = f"{command} {completions[0]}"
+                # For path completions, the completion already includes the full path
+                # For simple completions, just replace the partial
+                if '/' in partial:
+                    # Path completion - use the full completion as-is (it already has the path)
+                    self.input_buffer = f"{command} {completion}"
+                else:
+                    # Simple completion - just replace
+                    self.input_buffer = f"{command} {completion}"
         else:
             # Multiple completions - show them
             self.add_output("")
@@ -1458,9 +1597,92 @@ class MainMenuState(BaseState):
             self.add_output("")
     
     def _get_directory_completions(self, partial):
-        """Get directory name completions"""
-        # Get all contents (includes user-created)
-        all_contents = self.filesystem.list_directory()
+        """Get directory name completions, supporting path completion"""
+        # Handle path completion (e.g., "home/pilot/" or "home/pilot/b")
+        if '/' in partial:
+            # Check if it ends with a slash
+            ends_with_slash = partial.endswith('/')
+            # Split into path and filename parts
+            path_parts = partial.rsplit('/', 1)
+            if len(path_parts) == 2 and path_parts[1]:
+                # Has both path and partial filename (e.g., "home/pilot/b")
+                parent_path = path_parts[0]
+                filename_partial = path_parts[1]
+            elif ends_with_slash:
+                # Ends with /, so everything before is the path (e.g., "home/pilot/")
+                parent_path = partial.rstrip('/')
+                filename_partial = ""
+            else:
+                # Has / but no trailing slash and no filename part (shouldn't happen, but handle it)
+                parent_path = partial
+                filename_partial = ""
+            
+            # Save current directory
+            original_path = self.filesystem.current_path[:]
+            
+            # Try to navigate to parent directory
+            if parent_path:
+                # Handle absolute paths
+                if parent_path.startswith('/'):
+                    target_path = [p for p in parent_path.split('/') if p]
+                elif parent_path == '~':
+                    target_path = ['home', 'pilot', 'blthll']
+                else:
+                    # Relative path - build from current path
+                    path_components = [p for p in parent_path.split('/') if p]
+                    target_path = self.filesystem.current_path + path_components
+                
+                # Check if path exists and navigate there
+                if self.filesystem._directory_exists(target_path):
+                    self.filesystem.current_path = target_path
+                else:
+                    # Path doesn't exist, restore and return empty
+                    self.filesystem.current_path = original_path
+                    return []
+            else:
+                # Empty parent path - stay in current directory
+                filename_partial = partial.lstrip('/')
+            
+            # Get completions from the target directory
+            show_hidden = filename_partial.startswith('.') if filename_partial else False
+            all_contents = self.filesystem.list_directory(show_hidden=show_hidden)
+            
+            # Filter for directories
+            matches = []
+            for item in all_contents:
+                if item.endswith('/'):
+                    dir_name = item[:-1]  # Remove trailing slash
+                    if not filename_partial or dir_name.startswith(filename_partial):
+                        # Return full path relative to original directory
+                        if parent_path:
+                            matches.append(f"{parent_path}/{dir_name}")
+                        else:
+                            matches.append(dir_name)
+            
+            # Restore original directory
+            self.filesystem.current_path = original_path
+            
+            # Also include .. if it starts with partial and we're in a subdirectory
+            if (not filename_partial or "..".startswith(filename_partial)) and len(target_path) > 1:
+                if parent_path:
+                    # Calculate parent of parent_path
+                    if '/' in parent_path:
+                        parent_parts = parent_path.split('/')
+                        if len(parent_parts) > 1:
+                            parent_of_parent = '/'.join(parent_parts[:-1])
+                            matches.append(f"{parent_of_parent}/.." if parent_of_parent else "..")
+                        else:
+                            matches.append("..")
+                    else:
+                        matches.append("..")
+                else:
+                    matches.append("..")
+            
+            return sorted(matches)
+        
+        # No path - just complete from current directory
+        show_hidden = partial.startswith('.')
+        all_contents = self.filesystem.list_directory(show_hidden=show_hidden)
         
         # Filter for directories (end with /)
         matches = []
@@ -1478,8 +1700,10 @@ class MainMenuState(BaseState):
     
     def _get_file_completions(self, partial):
         """Get file name completions"""
+        # Show hidden files if user starts typing with a dot
+        show_hidden = partial.startswith('.')
         # Get all contents (includes user-created)
-        all_contents = self.filesystem.list_directory()
+        all_contents = self.filesystem.list_directory(show_hidden=show_hidden)
         
         # Filter for files (don't end with /)
         matches = []

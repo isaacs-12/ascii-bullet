@@ -161,9 +161,7 @@ class VirtualFileSystem:
                 "Up Up Down Down Left Right Left Right B A",
             ]),
             'developer_notes.txt': self._make_file('developer_notes.txt', [
-                "TODO: Add more particle effects",
-                "",
-                "TODO: System running slow lately -- figure out why..."
+                "TODO: System running slow after installing some packages -- figure out why..."
             ])
         })
         
@@ -179,9 +177,66 @@ class VirtualFileSystem:
                 ], permissions='r--------')  # Read-only
             }
         )
+
+        set_dir = self._make_dir('set',
+            files={
+                'card_1.dat': self._make_file('card_1.dat', [], permissions='rwx------'),
+                'card_2.dat': self._make_file('card_2.dat', [], permissions='rwx------'), 
+                'card_3.dat': self._make_file('card_3.dat', [], permissions='------rwx'),
+                'help.txt': self._make_file('help.txt', [
+                    "A set is defined as three cards that, for each of the available attributes, either are all the same or all different.",
+                    "In the standard card game, the attributes are quantity, shape, shading, and color.",
+                    "Hint: rwx",
+                ], permissions='r--------'),
+            }
+        )
+
+        asteroids_dir = self._make_dir('asteroids',
+            files={}
+        )
+
+        galaga_dir = self._make_dir('galaga',
+            files={}
+        )
+
+        oregon_dir = self._make_dir('oregon',
+            files={}
+        )
+
+        minesweeper_dir = self._make_dir('minesweeper',
+            files={
+                'help.txt': self._make_file('help.txt', [
+                    "Minesweeper is all about gathering intel on what can't yet be seen.",
+                    "Believe it or not, everything you need is already here..."
+                ]),
+                '.node_0_0': self._make_file('.node_0_0', [], permissions='rwx------'),
+                '.node_0_1': self._make_file('.node_0_1', [], permissions='rwx------'),
+                '.node_0_2': self._make_file('.node_0_2', [], permissions='rwx------'),
+                '.node_1_0': self._make_file('.node_1_0', [], permissions='rwx------'),
+                '.node_1_1': self._make_file('.node_1_1', [], permissions='rwx------'),
+                '.node_1_2': self._make_file('.node_1_2', [], permissions='rwx------'),
+                '.node_2_0': self._make_file('.node_2_0', [], permissions='rwx------'),
+                '.node_2_1': self._make_file('.node_2_1', [], permissions='rwx------'),
+                '.node_2_2': self._make_file('.node_2_2', [], permissions='rwx------'),
+            }
+        )
+
+        games_dir = self._make_dir('games',
+            dirs={
+                'set': set_dir,
+                'asteroids': asteroids_dir,
+                'galaga': galaga_dir,
+                'oregon': oregon_dir,
+                'minesweeper': minesweeper_dir,
+            },
+            files={}
+        )
         
         blthll_dir = self._make_dir('blthll',
-            dirs={'data': data_dir},
+            dirs={
+                'data': data_dir,
+                'games': games_dir,
+            },
             files={
                 'readme.txt': self._make_file('readme.txt', [
                     "Welcome to BLTHLL",
@@ -322,10 +377,29 @@ class VirtualFileSystem:
                 return (False, f"cd: {path}: No such directory")
         
         else:
-            # Relative path
-            new_path = self.current_path + [path]
-            if self._directory_exists(new_path):
-                self.current_path = new_path
+            # Relative path - may contain slashes (e.g., "home/pilot/")
+            # Remove trailing slash if present
+            path = path.rstrip('/')
+            # Split into components
+            path_components = [p for p in path.split('/') if p]
+            if not path_components:
+                # Empty path after splitting (e.g., just "/" or "")
+                return (True, None)
+            
+            # Build new path by appending components
+            new_path = self.current_path + path_components
+            
+            # Handle ".." in the path components
+            final_path = []
+            for component in new_path:
+                if component == '..':
+                    if final_path:
+                        final_path.pop()
+                else:
+                    final_path.append(component)
+            
+            if self._directory_exists(final_path):
+                self.current_path = final_path
                 return (True, None)
             else:
                 return (False, f"cd: {path}: No such directory")
@@ -489,10 +563,14 @@ class VirtualFileSystem:
         """
         full_path = self.get_pwd() + '/' + filename
         
-        # Check write permission for existing files
+        # Check write permission and ownership for existing files
         if self.file_exists(filename):
             if not self.check_permission(filename, 'w'):
                 return (False, f"Permission denied: '{filename}'")
+            # Check ownership (only root or owner can write)
+            owner = self.get_file_owner(filename)
+            if self.current_user != "root" and self.current_user != owner:
+                return (False, f"Permission denied: '{filename}' (operation not permitted)")
         
         # Get existing content
         existing = None
@@ -540,9 +618,13 @@ class VirtualFileSystem:
         """
         full_path = self.get_pwd() + '/' + filename
         
-        # Check write permission (needed to delete)
+        # Check write permission and ownership (needed to delete)
         if not self.check_permission(filename, 'w'):
             return (False, f"Permission denied: '{filename}'")
+        # Check ownership (only root or owner can delete)
+        owner = self.get_file_owner(filename)
+        if self.current_user != "root" and self.current_user != owner:
+            return (False, f"Permission denied: '{filename}' (operation not permitted)")
         
         # Delete user-created files
         if full_path in self.user_created_files:
@@ -858,6 +940,11 @@ class VirtualFileSystem:
         if not self.file_exists(source):
             return (False, f"File '{source}' not found")
         
+        # Check ownership (only root or owner can move)
+        owner = self.get_file_owner(source)
+        if self.current_user != "root" and self.current_user != owner:
+            return (False, f"Permission denied: '{source}' (operation not permitted)")
+        
         # Read source file content
         success, content = self.read_file(source)
         if not success:
@@ -939,8 +1026,16 @@ class VirtualFileSystem:
         
         return (True, None)
     
-    def list_directory(self):
-        """List contents of current directory (including user-created)"""
+    def list_directory(self, show_hidden=False):
+        """
+        List contents of current directory (including user-created)
+        
+        Args:
+            show_hidden: If True, include files/directories starting with '.' (hidden files)
+        
+        Returns:
+            list: List of file and directory names
+        """
         current_dir = self.get_current_directory()
         contents = []
         current_path = self.get_pwd()
@@ -949,7 +1044,8 @@ class VirtualFileSystem:
         if len(self.current_path) == 0:
             # At root, directories are top-level keys
             for dir_name in sorted(current_dir.keys()):
-                contents.append(f"{dir_name}/")
+                if show_hidden or not dir_name.startswith('.'):
+                    contents.append(f"{dir_name}/")
             return contents
         
         # Add default directories
@@ -957,7 +1053,8 @@ class VirtualFileSystem:
             for dir_name in sorted(current_dir['dirs'].keys()):
                 # Skip metadata keys that might have been incorrectly added as directories
                 if dir_name not in ('files', 'dirs'):
-                    contents.append(f"{dir_name}/")
+                    if show_hidden or not dir_name.startswith('.'):
+                        contents.append(f"{dir_name}/")
         
         # Add user-created directories
         for dir_path in sorted(self.user_created_dirs):
@@ -966,15 +1063,17 @@ class VirtualFileSystem:
                 parent = dir_path.rsplit('/', 1)[0]
                 if parent == current_path:
                     dir_name = dir_path.rsplit('/', 1)[1]
-                    if f"{dir_name}/" not in contents:
-                        contents.append(f"{dir_name}/")
+                    if show_hidden or not dir_name.startswith('.'):
+                        if f"{dir_name}/" not in contents:
+                            contents.append(f"{dir_name}/")
         
         # Add default files (excluding deleted ones)
         if 'files' in current_dir:
             for file_name in sorted(current_dir['files'].keys()):
                 full_path = current_path + '/' + file_name
                 if full_path not in self.user_deleted_files:
-                    contents.append(file_name)
+                    if show_hidden or not file_name.startswith('.'):
+                        contents.append(file_name)
         
         # Add user-created files in this directory
         for file_path in sorted(self.user_created_files.keys()):
@@ -982,8 +1081,9 @@ class VirtualFileSystem:
                 parent = file_path.rsplit('/', 1)[0]
                 if parent == current_path:
                     file_name = file_path.rsplit('/', 1)[1]
-                    if file_name not in contents:
-                        contents.append(file_name)
+                    if show_hidden or not file_name.startswith('.'):
+                        if file_name not in contents:
+                            contents.append(file_name)
         
         # Add user-modified files
         for file_path in sorted(self.user_modified_files.keys()):
@@ -991,8 +1091,9 @@ class VirtualFileSystem:
                 parent = file_path.rsplit('/', 1)[0]
                 if parent == current_path:
                     file_name = file_path.rsplit('/', 1)[1]
-                    if file_name not in contents:
-                        contents.append(file_name)
+                    if show_hidden or not file_name.startswith('.'):
+                        if file_name not in contents:
+                            contents.append(file_name)
         
         return contents
     

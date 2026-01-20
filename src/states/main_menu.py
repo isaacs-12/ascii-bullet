@@ -266,6 +266,9 @@ class MainMenuState(BaseState):
                 
                 elif event.key == pygame.K_BACKSPACE:
                     # Delete last character
+                    # If user starts editing after navigating history, reset history index
+                    if self.history_index != -1:
+                        self.history_index = -1
                     if self.waiting_for_password:
                         if self.password_buffer:
                             self.password_buffer = self.password_buffer[:-1]
@@ -284,10 +287,12 @@ class MainMenuState(BaseState):
                         max_scroll = max(0, len(self.output_lines) - visible_lines)
                         self.scroll_offset = min(max_scroll, self.scroll_offset + 1)
                     else:
-                        # Navigate command history up
-                        if self.command_history and self.history_index < len(self.command_history) - 1:
-                            self.history_index += 1
-                            self.input_buffer = self.command_history[-(self.history_index + 1)]
+                        # Navigate command history up (most recent first)
+                        if self.command_history:
+                            if self.history_index < len(self.command_history) - 1:
+                                self.history_index += 1
+                                # Access from end: history_index 0 = most recent, 1 = second most recent, etc.
+                                self.input_buffer = self.command_history[-(self.history_index + 1)]
                 
                 elif event.key == pygame.K_DOWN:
                     # Shift+DOWN scrolls output, otherwise navigate history
@@ -357,6 +362,9 @@ class MainMenuState(BaseState):
                             self.password_buffer += event.unicode
                             self.input_buffer += '*'
                         else:
+                            # If user starts typing after navigating history, reset history index
+                            if self.history_index != -1:
+                                self.history_index = -1
                             self.input_buffer += event.unicode
     
     def update(self, dt):
@@ -875,8 +883,8 @@ class MainMenuState(BaseState):
             # List directory contents (hidden files not shown by default)
             contents = self.filesystem.list_directory(show_hidden=False)
             if contents:
-                # Format in columns for better display
-                self.add_output("  ".join(contents))
+                # Format with wrapping based on terminal width
+                self._format_ls_output(contents)
             else:
                 self.add_output("(empty directory)")
             self.add_output("")
@@ -1095,6 +1103,7 @@ class MainMenuState(BaseState):
             current_dir = self.filesystem.get_current_directory()
             is_dir = False
             dir_name = filename.rstrip('/')
+            dir_path_for_timestamp = self.filesystem.get_pwd() + '/' + dir_name
             if 'dirs' in current_dir and dir_name in current_dir['dirs']:
                 is_dir = True
             else:
@@ -1108,13 +1117,25 @@ class MainMenuState(BaseState):
             if is_dir:
                 # Directory exists
                 size = 0
+                # Update access time for directory (stat updates access time)
+                self.filesystem._update_timestamp(dir_path_for_timestamp, 'access')
             elif self.filesystem.file_exists(filename):
                 # File exists - get its size
                 success, content = self.filesystem.read_file(filename)
                 if success:
                     if isinstance(content, list):
-                        size = sum(len(str(line)) + 1 for line in content)  # +1 for newline
+                        # Calculate size: each line's length + newlines between lines (not after last)
+                        # Convert to string to handle non-string content (e.g., integers)
+                        if len(content) == 0:
+                            size = 0
+                        elif len(content) == 1:
+                            # Single line - no newline needed for 1-byte files
+                            size = len(str(content[0]))
+                        else:
+                            # Multiple lines: sum of line lengths + newlines between them
+                            size = sum(len(str(line)) for line in content) + (len(content) - 1)
                     else:
+                        # Single string content (or other type - convert to string)
                         size = len(str(content))
                 else:
                     # Permission denied - still show stat but with size 0
@@ -1143,14 +1164,41 @@ class MainMenuState(BaseState):
             else:
                 perms_display = perms + "-" * (9 - len(perms))
             
+            # Get timestamps
+            if is_dir:
+                full_path = dir_path_for_timestamp
+            else:
+                full_path = self.filesystem.get_pwd() + '/' + filename
+            access_time = self.filesystem._get_timestamp(full_path, 'access')
+            modify_time = self.filesystem._get_timestamp(full_path, 'modify')
+            change_time = self.filesystem._get_timestamp(full_path, 'change')
+            
+            # Format timestamps (convert ISO to Unix stat format)
+            from datetime import datetime
+            try:
+                access_dt = datetime.fromisoformat(access_time)
+                modify_dt = datetime.fromisoformat(modify_time)
+                change_dt = datetime.fromisoformat(change_time)
+                access_str = access_dt.strftime("%Y-%m-%d %H:%M:%S.%f")
+                modify_str = modify_dt.strftime("%Y-%m-%d %H:%M:%S.%f")
+                change_str = change_dt.strftime("%Y-%m-%d %H:%M:%S.%f")
+            except (ValueError, AttributeError):
+                # Fallback if timestamp format is unexpected
+                access_str = access_time
+                modify_str = modify_time
+                change_str = change_time
+            
+            # Calculate blocks (512-byte blocks, rounded up)
+            blocks = (size + 511) // 512 if size > 0 else 0
+            
             # Display stat information (similar to Unix stat command)
             self.add_output(f"  File: {filename}")
-            self.add_output(f"  Size: {size:<12} Blocks: 0          IO Block: 4096   {file_type}")
+            self.add_output(f"  Size: {size:<12} Blocks: {blocks:<10} IO Block: 4096   {file_type}")
             self.add_output(f"Device: 0h/{0:<10} Inode: 0     Links: 1")
             self.add_output(f"Access: ({perms_display})  Uid: ({owner})   Gid: (users)")
-            self.add_output(f"Access: 2024-01-01 00:00:00.000000000")
-            self.add_output(f"Modify: 2024-01-01 00:00:00.000000000")
-            self.add_output(f"Change: 2024-01-01 00:00:00.000000000")
+            self.add_output(f"Access: {access_str}")
+            self.add_output(f"Modify: {modify_str}")
+            self.add_output(f"Change: {change_str}")
             self.add_output("")
         
         elif cmd_lower.startswith("touch "):
@@ -1591,10 +1639,51 @@ class MainMenuState(BaseState):
                     # Simple completion - just replace
                     self.input_buffer = f"{command} {completion}"
         else:
-            # Multiple completions - show them
+            # Multiple completions - show them with wrapping
             self.add_output("")
-            self.add_output("  ".join(completions))
+            self._format_ls_output(completions, separator="  ")
             self.add_output("")
+    
+    def _format_ls_output(self, items, separator="  "):
+        """
+        Format ls output with wrapping based on terminal width
+        
+        Args:
+            items: List of file/directory names
+            separator: String to separate items (default: "  ")
+        """
+        if not items:
+            return
+        
+        # Get available width (leave 2 char margin on each side)
+        available_width = self.renderer.char_width - 2
+        
+        # Build lines
+        current_line = ""
+        for item in items:
+            # Calculate what the line would look like with this item
+            if current_line:
+                test_line = current_line + separator + item
+            else:
+                test_line = item
+            
+            # Check if it fits
+            if len(test_line) <= available_width:
+                # Fits - add to current line
+                if current_line:
+                    current_line += separator + item
+                else:
+                    current_line = item
+            else:
+                # Doesn't fit - output current line and start new one
+                if current_line:
+                    self.add_output(current_line)
+                # Start new line with this item (even if it's too long, we'll add it)
+                current_line = item
+        
+        # Output remaining line
+        if current_line:
+            self.add_output(current_line)
     
     def _get_directory_completions(self, partial):
         """Get directory name completions, supporting path completion"""

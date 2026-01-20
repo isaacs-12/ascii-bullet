@@ -34,16 +34,25 @@ class VirtualOSPath:
         if not success:
             return 0
         elif isinstance(content, list):
-            return sum(len(line) + 1 for line in content)
+            # Convert to string to handle non-string content (e.g., integers)
+            if len(content) == 0:
+                return 0
+            elif len(content) == 1:
+                # Single line - no newline needed for 1-byte files
+                return len(str(content[0]))
+            else:
+                # Multiple lines: sum of line lengths + newlines between them
+                return sum(len(str(line)) for line in content) + (len(content) - 1)
         else:
-            return len(content)
+            # Convert to string to handle non-string content
+            return len(str(content))
     
     def isfile(self, path):
         """Check if path is a file (not a directory)"""
         if not self.filesystem.file_exists(path):
             return False
         # In our filesystem, directories end with '/'
-        contents = self.filesystem.list_directory()
+        contents = self.filesystem.list_directory(show_hidden=True)
         return path in contents and not path.endswith('/')
     
     def isdir(self, path):
@@ -55,7 +64,7 @@ class VirtualOSPath:
         else:
             dir_path = path + '/'
         
-        contents = self.filesystem.list_directory()
+        contents = self.filesystem.list_directory(show_hidden=True)
         return dir_path in contents
 
 
@@ -83,12 +92,12 @@ class VirtualOS:
         return self.filesystem.get_pwd()
     
     def listdir(self, path=None):
-        """List directory contents"""
+        """List directory contents (includes hidden files, matching real os.listdir)"""
         if path is None:
-            return self.filesystem.list_directory()
+            return self.filesystem.list_directory(show_hidden=True)
         # For now, only support current directory
         # Could extend to support path parameter
-        return self.filesystem.list_directory()
+        return self.filesystem.list_directory(show_hidden=True)
     
     def stat(self, path):
         """Get file statistics"""
@@ -100,9 +109,18 @@ class VirtualOS:
         if not success:
             size = 0
         elif isinstance(content, list):
-            size = sum(len(line) + 1 for line in content)
+            # Convert to string to handle non-string content (e.g., integers)
+            if len(content) == 0:
+                size = 0
+            elif len(content) == 1:
+                # Single line - no newline needed for 1-byte files
+                size = len(str(content[0]))
+            else:
+                # Multiple lines: sum of line lengths + newlines between them
+                size = sum(len(str(line)) for line in content) + (len(content) - 1)
         else:
-            size = len(content)
+            # Convert to string to handle non-string content
+            size = len(str(content))
         
         permissions = self.filesystem.get_permissions(path)
         owner = self.filesystem.get_file_owner(path)

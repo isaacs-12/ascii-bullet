@@ -3,6 +3,7 @@ Simulated filesystem for terminal easter eggs
 """
 
 import json
+from datetime import datetime
 
 
 class VirtualFileSystem:
@@ -39,6 +40,13 @@ class VirtualFileSystem:
         # File ownership system
         self.current_user = "pilot"  # Current user (can be "pilot" or "root")
         self.default_file_owners = self._get_default_file_owners()
+        
+        # File timestamps: path -> {'access': datetime, 'modify': datetime, 'change': datetime}
+        # All timestamps are stored as ISO format strings for JSON serialization
+        self.file_timestamps = {}  # path -> {'access': str, 'modify': str, 'change': str}
+        
+        # Initialize default timestamps for existing files
+        self._initialize_default_timestamps()
         
         # Restore saved state if provided
         if saved_state:
@@ -106,6 +114,67 @@ class VirtualFileSystem:
             '/system/core': 'root',
             '/system/core/init.py': 'root',
         }
+    
+    def _initialize_default_timestamps(self):
+        """Initialize default timestamps for all existing files in the filesystem"""
+        # Default timestamp (game start time)
+        default_time = datetime.now().isoformat()
+        
+        def _walk_filesystem(node, current_path=""):
+            """Recursively walk filesystem to find all files"""
+            if 'files' in node:
+                for filename in node['files']:
+                    full_path = f"{current_path}/{filename}" if current_path else f"/{filename}"
+                    if full_path not in self.file_timestamps:
+                        self.file_timestamps[full_path] = {
+                            'access': default_time,
+                            'modify': default_time,
+                            'change': default_time
+                        }
+            if 'dirs' in node:
+                for dirname, dirnode in node['dirs'].items():
+                    new_path = f"{current_path}/{dirname}" if current_path else f"/{dirname}"
+                    _walk_filesystem(dirnode, new_path)
+        
+        _walk_filesystem(self.filesystem, "")
+    
+    def _get_timestamp(self, full_path, timestamp_type='access'):
+        """
+        Get a timestamp for a file
+        
+        Args:
+            full_path: Full path to the file
+            timestamp_type: 'access', 'modify', or 'change'
+            
+        Returns:
+            str: ISO format timestamp string
+        """
+        if full_path not in self.file_timestamps:
+            # Initialize with current time
+            now = datetime.now().isoformat()
+            self.file_timestamps[full_path] = {
+                'access': now,
+                'modify': now,
+                'change': now
+            }
+        return self.file_timestamps[full_path].get(timestamp_type, datetime.now().isoformat())
+    
+    def _update_timestamp(self, full_path, timestamp_type='access'):
+        """
+        Update a timestamp for a file
+        
+        Args:
+            full_path: Full path to the file
+            timestamp_type: 'access', 'modify', or 'change'
+        """
+        now = datetime.now().isoformat()
+        if full_path not in self.file_timestamps:
+            self.file_timestamps[full_path] = {
+                'access': now,
+                'modify': now,
+                'change': now
+            }
+        self.file_timestamps[full_path][timestamp_type] = now
     
     def _make_file(self, name, content, permissions=None):
         """
@@ -210,14 +279,18 @@ class VirtualFileSystem:
                     "Believe it or not, everything you need is already here..."
                 ]),
                 '.node_0_0': self._make_file('.node_0_0', [], permissions='rwx------'),
-                '.node_0_1': self._make_file('.node_0_1', [], permissions='rwx------'),
-                '.node_0_2': self._make_file('.node_0_2', [], permissions='rwx------'),
-                '.node_1_0': self._make_file('.node_1_0', [], permissions='rwx------'),
-                '.node_1_1': self._make_file('.node_1_1', [], permissions='rwx------'),
+                '.node_0_1': self._make_file('.node_0_1', [1], permissions='rwx------'),
+                '.node_0_2': self._make_file('.node_0_2', [1], permissions='rwx------'),
+                '.node_1_0': self._make_file('.node_1_0', [1], permissions='rwx------'),
+                '.node_1_1': self._make_file('.node_1_1', [11], permissions='rwx------'),
                 '.node_1_2': self._make_file('.node_1_2', [], permissions='rwx------'),
                 '.node_2_0': self._make_file('.node_2_0', [], permissions='rwx------'),
-                '.node_2_1': self._make_file('.node_2_1', [], permissions='rwx------'),
-                '.node_2_2': self._make_file('.node_2_2', [], permissions='rwx------'),
+                '.node_2_1': self._make_file('.node_2_1', [11], permissions='rwx------'),
+                '.node_2_2': self._make_file('.node_2_2', [1], permissions='rwx------'),
+                'helper.py': self._make_file('helper.py', [
+                    "for f in os.listdir():",
+                    "    printt(f'{f}: {os.path.getsize(f)} bytes')",
+                ], permissions='rwx------'),
             }
         )
 
@@ -437,12 +510,14 @@ class VirtualFileSystem:
         
         # Check user-created/modified files first
         if full_path in self.user_created_files:
+            self._update_timestamp(full_path, 'access')
             content = self.user_created_files[full_path]
             if isinstance(content, list):
                 return (True, content)
             else:
                 return (True, [content])
         elif full_path in self.user_modified_files:
+            self._update_timestamp(full_path, 'access')
             content = self.user_modified_files[full_path]
             if isinstance(content, list):
                 return (True, content)
@@ -457,6 +532,8 @@ class VirtualFileSystem:
             # Check read permission for existing default files
             if not self.check_permission(filename, 'r'):
                 return (False, f"Permission denied: '{filename}'")
+            # Update access time
+            self._update_timestamp(full_path, 'access')
             file_entry = current_dir['files'][filename]
             content = self._extract_file_content(file_entry)
             return (True, content)
@@ -485,14 +562,16 @@ class VirtualFileSystem:
         total = 0
         for content in self.user_created_files.values():
             if isinstance(content, list):
-                total += sum(len(line) for line in content)
+                # Convert to string to handle non-string content (e.g., integers)
+                total += sum(len(str(line)) for line in content)
             else:
-                total += len(content)
+                total += len(str(content))
         for content in self.user_modified_files.values():
             if isinstance(content, list):
-                total += sum(len(line) for line in content)
+                # Convert to string to handle non-string content (e.g., integers)
+                total += sum(len(str(line)) for line in content)
             else:
-                total += len(content)
+                total += len(str(content))
         return total
     
     def file_exists(self, filename):
@@ -547,6 +626,13 @@ class VirtualFileSystem:
         
         full_path = self.get_pwd() + '/' + filename
         self.user_created_files[full_path] = content if content else []
+        # Set initial timestamps for new file
+        now = datetime.now().isoformat()
+        self.file_timestamps[full_path] = {
+            'access': now,
+            'modify': now,
+            'change': now
+        }
         return (True, None)
     
     def write_file(self, filename, content, append=False):
@@ -593,8 +679,8 @@ class VirtualFileSystem:
         else:
             new_content = [content] if not isinstance(content, list) else content
         
-        # Check size
-        new_size = sum(len(line) for line in new_content) if isinstance(new_content, list) else len(new_content)
+        # Check size (convert to string to handle non-string content)
+        new_size = sum(len(str(line)) for line in new_content) if isinstance(new_content, list) else len(str(new_content))
         if self._get_user_files_size() + new_size > self.MAX_USER_FILES_SIZE:
             return (False, "File size limit exceeded (16KB max for user files)")
         
@@ -603,6 +689,10 @@ class VirtualFileSystem:
             self.user_created_files[full_path] = new_content
         else:
             self.user_modified_files[full_path] = new_content
+        
+        # Update modify and change timestamps
+        self._update_timestamp(full_path, 'modify')
+        self._update_timestamp(full_path, 'change')
         
         return (True, None)
     
@@ -662,6 +752,14 @@ class VirtualFileSystem:
             return (False, f"Directory '{dirname}' already exists")
         
         self.user_created_dirs.append(full_path)
+        # Set initial timestamps for new directory (use path without trailing slash for consistency)
+        now = datetime.now().isoformat()
+        dir_path_no_slash = full_path.rstrip('/')
+        self.file_timestamps[dir_path_no_slash] = {
+            'access': now,
+            'modify': now,
+            'change': now
+        }
         return (True, None)
     
     def delete_directory(self, dirname):
@@ -864,6 +962,8 @@ class VirtualFileSystem:
         
         # Set permissions
         self.file_permissions[full_path] = permissions
+        # Update change timestamp (metadata changed)
+        self._update_timestamp(full_path, 'change')
         return (True, None)
     
     def check_permission(self, filename, permission):
@@ -1155,6 +1255,7 @@ class VirtualFileSystem:
             'user_modified_files': self.user_modified_files,
             'user_deleted_files': list(self.user_deleted_files),
             'file_permissions': self.file_permissions,
+            'file_timestamps': self.file_timestamps,
             # Note: current_user is NOT saved - always start as 'pilot'
         }
     
@@ -1172,6 +1273,11 @@ class VirtualFileSystem:
             self.user_deleted_files = set(state['user_deleted_files'])
         if 'file_permissions' in state:
             self.file_permissions = state['file_permissions']
+        if 'file_timestamps' in state:
+            self.file_timestamps = state['file_timestamps']
+        else:
+            # Initialize timestamps for restored files if not present
+            self._initialize_default_timestamps()
     
     def reset_to_defaults(self):
         """Reset filesystem to default state"""
@@ -1181,7 +1287,10 @@ class VirtualFileSystem:
         self.user_modified_files = {}
         self.user_deleted_files = set()
         self.file_permissions = {}
+        self.file_timestamps = {}
         self.current_user = "pilot"
+        # Re-initialize default timestamps
+        self._initialize_default_timestamps()
     
     def reset_filesystem_keep_user_files(self):
         """

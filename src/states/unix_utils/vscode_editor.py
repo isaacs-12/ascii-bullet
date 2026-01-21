@@ -17,11 +17,11 @@ class VSCodeEditorState(BaseState):
         Args:
             game: Game instance
             filesystem: VirtualFileSystem instance
-            previous_state: State to return to when done
+            previous_state: State to return to when done (MainMenuState for command execution)
         """
         super().__init__(game)
         self.filesystem = filesystem
-        self.previous_state = previous_state
+        self.previous_state = previous_state  # MainMenuState for command execution
         
         # Sidebar state
         self.sidebar_width = 20  # Character width of sidebar
@@ -64,6 +64,22 @@ class VSCodeEditorState(BaseState):
         self.key_repeat_state = {}  # key -> (last_press_time, repeat_count)
         self.key_repeat_delay = 200  # ms before first repeat
         self.key_repeat_interval = 30  # ms between repeats
+        
+        # Terminal state
+        self.terminal_open = False
+        self.terminal_height = 8  # Height in character lines (minimum 3)
+        self.terminal_min_height = 3
+        self.terminal_max_height = self.renderer.char_height - 10  # Leave room for editor
+        self.terminal_drag_y = None  # Y position when dragging terminal divider (None if not dragging)
+        self.terminal_output_lines = []  # Terminal output buffer
+        self.terminal_input_buffer = ""  # Current input in terminal
+        self.terminal_cursor_visible = True
+        self.terminal_cursor_timer = 0
+        self.terminal_scroll_offset = 0  # Scroll offset for terminal output
+        # Load command history from save system (same as main menu)
+        saved_history = game.save_system.get_command_history()
+        self.terminal_history = saved_history.copy() if saved_history else []
+        self.terminal_history_index = -1
     
     def enter(self):
         """Called when entering this state"""
@@ -463,7 +479,17 @@ class VSCodeEditorState(BaseState):
         """Handle input events"""
         for event in events:
             if event.type == pygame.KEYDOWN:
-                self._handle_keydown(event)
+                # ESC always quits editor (regardless of terminal focus)
+                if event.key == pygame.K_ESCAPE:
+                    self._save_all_files()
+                    self.game.change_state(self.previous_state, call_enter=False)
+                    return
+                
+                # Check if terminal is open and focused
+                if self.terminal_open and self._is_terminal_focused():
+                    self._handle_terminal_keydown(event)
+                else:
+                    self._handle_keydown(event)
             elif event.type == pygame.KEYUP:
                 # Clear key repeat state when key is released
                 if event.key in self.key_repeat_state:
@@ -479,11 +505,7 @@ class VSCodeEditorState(BaseState):
     
     def _handle_keydown(self, event):
         """Handle keyboard input"""
-        if event.key == pygame.K_ESCAPE:
-            # Quit editor
-            self._save_all_files()
-            self.game.change_state(self.previous_state, call_enter=False)
-            return
+        # ESC is handled in handle_events before routing here
         
         # If no tabs open, ignore most keys
         if len(self.open_tabs) == 0:
@@ -877,13 +899,32 @@ class VSCodeEditorState(BaseState):
             elif mouse_x > self.sidebar_width + 1 and mouse_y < 2:
                 self._handle_tab_click(mouse_x, mouse_y)
             
-            # Check if clicking in editor area (below tabs)
+            # Check if clicking on terminal divider (if terminal is open)
+            elif self.terminal_open and self._is_terminal_divider_y(mouse_y):
+                self.terminal_drag_y = event.pos[1]
+            
+            # Check if clicking in terminal area
+            elif self.terminal_open and self._is_in_terminal_area(mouse_x, mouse_y):
+                # Terminal is focused when clicked
+                pass  # Focus is handled by _is_terminal_focused()
+            
+            # Check if clicking in editor area (below tabs, above terminal)
             elif mouse_x > self.sidebar_width + 1 and mouse_y >= 2:
-                self._handle_editor_click(mouse_x, mouse_y)
+                if not self.terminal_open or mouse_y < self.renderer.char_height - self.terminal_height - 1:
+                    self._handle_editor_click(mouse_x, mouse_y)
     
     def _handle_sidebar_click(self, mouse_x, mouse_y):
         """Handle clicks in the sidebar"""
-        # Account for sidebar title (row 0)
+        # Check if clicking on "Toggle Terminal" button (row 0, before FILES)
+        if mouse_y == 0:
+            self.terminal_open = not self.terminal_open
+            if not self.terminal_open:
+                # Clear terminal input when closing
+                self.terminal_input_buffer = ""
+            return
+        
+        # Account for sidebar title (row 0) and terminal button (row 0)
+        # So actual tree starts at row 1
         click_y = mouse_y - 1
         
         tree = self._get_file_tree()
@@ -991,17 +1032,36 @@ class VSCodeEditorState(BaseState):
         """Handle mouse release"""
         if event.button == 1:
             self.sidebar_drag_x = None
+            self.terminal_drag_y = None
     
     def _handle_mouse_motion(self, event):
-        """Handle mouse motion (for dragging sidebar)"""
+        """Handle mouse motion (for dragging sidebar and terminal divider)"""
         if self.sidebar_drag_x is not None and event.buttons[0]:  # Left button held
             # Calculate new sidebar width
             new_width_chars = event.pos[0] // self.renderer.cell_width
             new_width_chars = max(self.sidebar_min_width, min(self.sidebar_max_width, new_width_chars))
             self.sidebar_width = new_width_chars
+        elif self.terminal_drag_y is not None and event.buttons[0]:  # Dragging terminal divider
+            # Calculate new terminal height
+            title_bar_pixels = self.renderer.title_bar_height
+            adjusted_y = event.pos[1] - title_bar_pixels
+            mouse_y = adjusted_y // self.renderer.cell_height
+            # Terminal divider is at: char_height - terminal_height - 1
+            # So terminal_height = char_height - mouse_y - 1
+            new_height = self.renderer.char_height - mouse_y - 1
+            new_height = max(self.terminal_min_height, min(self.terminal_max_height, new_height))
+            self.terminal_height = new_height
     
     def _handle_mouse_wheel(self, event):
         """Handle mouse wheel scrolling"""
+        # Check if scrolling in terminal area
+        if self.terminal_open and self._is_terminal_focused():
+            # Scroll terminal output
+            scroll_amount = -event.y * 3
+            max_scroll = max(0, len(self.terminal_output_lines) - (self.terminal_height - 1))
+            self.terminal_scroll_offset = max(0, min(max_scroll, self.terminal_scroll_offset + scroll_amount))
+            return
+        
         if len(self.open_tabs) == 0:
             return
         
@@ -1024,6 +1084,13 @@ class VSCodeEditorState(BaseState):
             self.status_message_timeout -= 1
             if self.status_message_timeout == 0:
                 self.status_message = "Code Editor | ESC to quit | Click files to open"
+        
+        # Update terminal cursor blink
+        if self.terminal_open:
+            self.terminal_cursor_timer += dt
+            if self.terminal_cursor_timer >= 500:  # Blink every 500ms
+                self.terminal_cursor_visible = not self.terminal_cursor_visible
+                self.terminal_cursor_timer = 0
         
         # Handle key repeat for arrow keys
         if len(self.open_tabs) > 0:
@@ -1111,6 +1178,10 @@ class VSCodeEditorState(BaseState):
         # Draw editor area
         self._render_editor()
         
+        # Draw terminal if open
+        if self.terminal_open:
+            self._render_terminal()
+        
         # Draw status bar
         self._render_status_bar()
         
@@ -1118,15 +1189,20 @@ class VSCodeEditorState(BaseState):
     
     def _render_sidebar(self):
         """Render the file tree sidebar"""
-        # Sidebar title
+        # Toggle Terminal button (row 0)
+        terminal_text = "◄ Terminal" if self.terminal_open else "► Terminal"
+        terminal_color = (100, 255, 100) if self.terminal_open else (150, 150, 150)
+        self.renderer.write(0, 0, terminal_text[:self.sidebar_width], terminal_color)
+        
+        # Sidebar title (row 1)
         title = "FILES"
-        self.renderer.write(0, 0, title, (200, 200, 200))
+        self.renderer.write(0, 1, title, (200, 200, 200))
         
         # Get file tree
         tree = self._get_file_tree()
         
-        # Render tree items
-        start_y = 1
+        # Render tree items (starting at row 2)
+        start_y = 2
         for i, item in enumerate(tree):
             y = start_y + i
             if y >= self.renderer.char_height - 1:
@@ -1146,6 +1222,12 @@ class VSCodeEditorState(BaseState):
         """Render the editor pane"""
         editor_start_x = self.sidebar_width + 2
         
+        # Calculate editor height (account for terminal if open)
+        status_bar_height = 1
+        tab_height = 1
+        terminal_height = self.terminal_height if self.terminal_open else 0
+        editor_height = self.renderer.char_height - status_bar_height - tab_height - terminal_height
+        
         # Draw tabs
         self._render_tabs(editor_start_x)
         
@@ -1158,7 +1240,6 @@ class VSCodeEditorState(BaseState):
                 lines = [""]
             
             # Calculate visible area
-            editor_height = self.renderer.char_height - 3  # Leave room for tabs and status
             start_line = self.editor_scroll_y
             end_line = min(len(lines), start_line + editor_height)
             
@@ -1297,6 +1378,69 @@ class VSCodeEditorState(BaseState):
             
             start_x = x + 1
     
+    def _render_terminal(self):
+        """Render the terminal pane at the bottom"""
+        editor_start_x = self.sidebar_width + 2
+        terminal_start_y = self.renderer.char_height - self.terminal_height - 1  # -1 for status bar
+        
+        # Draw terminal divider (resizable handle)
+        divider_y = terminal_start_y - 1
+        divider_color = (100, 200, 255) if self.terminal_drag_y is not None else (100, 100, 100)
+        for x in range(editor_start_x, self.renderer.char_width):
+            self.renderer.write(x, divider_y, "=", divider_color)
+        # Draw handle indicator
+        handle_text = "+++"
+        handle_x = editor_start_x + (self.renderer.char_width - editor_start_x - len(handle_text)) // 2
+        self.renderer.write(handle_x, divider_y, handle_text, divider_color)
+        
+        # Calculate visible terminal area
+        visible_lines = self.terminal_height - 1  # -1 for input line
+        max_scroll = max(0, len(self.terminal_output_lines) - visible_lines)
+        self.terminal_scroll_offset = min(self.terminal_scroll_offset, max_scroll)
+        
+        if len(self.terminal_output_lines) <= visible_lines:
+            start_idx = 0
+        else:
+            start_idx = max(0, len(self.terminal_output_lines) - visible_lines - self.terminal_scroll_offset)
+        
+        visible_output = self.terminal_output_lines[start_idx:start_idx + visible_lines]
+        
+        # Draw terminal output
+        for i, line in enumerate(visible_output):
+            y = terminal_start_y + i
+            if y < self.renderer.char_height - 1:  # Don't draw over status bar
+                # Truncate line to fit
+                max_width = self.renderer.char_width - editor_start_x
+                display_line = line[:max_width] if len(line) <= max_width else line[:max_width-1] + "…"
+                self.renderer.write(editor_start_x, y, display_line, (200, 200, 200))
+        
+        # Draw input line at bottom of terminal
+        input_y = self.renderer.char_height - 2  # -2 for status bar
+        prompt = self._get_terminal_prompt()
+        input_text = prompt + self.terminal_input_buffer
+        max_width = self.renderer.char_width - editor_start_x
+        if len(input_text) > max_width:
+            # Show end of input with ellipsis
+            display_text = "…" + input_text[-(max_width-1):]
+        else:
+            display_text = input_text
+        self.renderer.write(editor_start_x, input_y, display_text, (255, 255, 255))
+        
+        # Draw cursor
+        if self.terminal_cursor_visible:
+            cursor_x = editor_start_x + len(prompt) + len(self.terminal_input_buffer)
+            if cursor_x < self.renderer.char_width:
+                self.renderer.write(cursor_x, input_y, "█", (255, 255, 0))
+    
+    def _get_terminal_prompt(self):
+        """Get the terminal prompt (same as main menu)"""
+        if hasattr(self.previous_state, 'get_prompt'):
+            return self.previous_state.get_prompt()
+        # Fallback prompt
+        pwd = self.filesystem.get_pwd()
+        user = self.filesystem.current_user
+        return f"{user}@{pwd}$ "
+    
     def _render_status_bar(self):
         """Render the status bar"""
         status_y = self.renderer.char_height - 1
@@ -1313,3 +1457,110 @@ class VSCodeEditorState(BaseState):
             info_x = self.renderer.char_width - len(file_info)
             if info_x > len(status_text):
                 self.renderer.write(info_x, status_y, file_info, (150, 150, 150))
+    
+    def _is_terminal_focused(self):
+        """Check if terminal is currently focused (for input)"""
+        # Terminal is focused when it's open (simple implementation)
+        # Could be enhanced to check mouse position
+        return self.terminal_open
+    
+    def _is_terminal_divider_y(self, mouse_y):
+        """Check if mouse_y is on the terminal divider"""
+        divider_y = self.renderer.char_height - self.terminal_height - 1
+        return abs(mouse_y - divider_y) <= 1
+    
+    def _is_in_terminal_area(self, mouse_x, mouse_y):
+        """Check if mouse is in terminal area"""
+        terminal_start_y = self.renderer.char_height - self.terminal_height - 1
+        return mouse_y >= terminal_start_y and mouse_x > self.sidebar_width + 1
+    
+    def _handle_terminal_keydown(self, event):
+        """Handle keyboard input for terminal"""
+        if event.key == pygame.K_RETURN:
+            # Execute command
+            command = self.terminal_input_buffer.strip()
+            if command:
+                self._execute_terminal_command(command)
+            self.terminal_input_buffer = ""
+            self.terminal_history_index = -1
+        
+        elif event.key == pygame.K_BACKSPACE:
+            if self.terminal_input_buffer:
+                self.terminal_input_buffer = self.terminal_input_buffer[:-1]
+        
+        elif event.key == pygame.K_UP:
+            # Navigate command history
+            if self.terminal_history:
+                if self.terminal_history_index == -1:
+                    self.terminal_history_index = len(self.terminal_history) - 1
+                elif self.terminal_history_index > 0:
+                    self.terminal_history_index -= 1
+                if 0 <= self.terminal_history_index < len(self.terminal_history):
+                    self.terminal_input_buffer = self.terminal_history[self.terminal_history_index]
+        
+        elif event.key == pygame.K_DOWN:
+            # Navigate command history forward
+            if self.terminal_history_index >= 0:
+                self.terminal_history_index += 1
+                if self.terminal_history_index >= len(self.terminal_history):
+                    self.terminal_history_index = -1
+                    self.terminal_input_buffer = ""
+                else:
+                    self.terminal_input_buffer = self.terminal_history[self.terminal_history_index]
+        
+        elif event.unicode and event.unicode.isprintable():
+            # Add character to input buffer
+            self.terminal_input_buffer += event.unicode
+    
+    def _execute_terminal_command(self, command):
+        """Execute a command in the terminal"""
+        # Add to history (allow duplicates, but keep most recent)
+        # Remove if exists, then append (so most recent is at end)
+        if command in self.terminal_history:
+            self.terminal_history.remove(command)
+        self.terminal_history.append(command)
+        # Keep history limited
+        if len(self.terminal_history) > 100:
+            self.terminal_history = self.terminal_history[-100:]
+        
+        # Also save to main menu's history and persist
+        if hasattr(self.previous_state, 'command_history'):
+            if command in self.previous_state.command_history:
+                self.previous_state.command_history.remove(command)
+            self.previous_state.command_history.append(command)
+            # Save periodically (every 10 commands)
+            if len(self.previous_state.command_history) % 10 == 0:
+                self.game.save_system.save_command_history(self.previous_state.command_history)
+        
+        # Show command in output
+        prompt = self._get_terminal_prompt()
+        self.terminal_output_lines.append(f"{prompt}{command}")
+        
+        # Execute command using MainMenuState's execute_command
+        if hasattr(self.previous_state, 'execute_command'):
+            # Capture output by temporarily replacing add_output
+            original_add_output = self.previous_state.add_output
+            captured_lines = []
+            
+            def terminal_add_output(text):
+                """Capture output to terminal"""
+                captured_lines.append(text)
+                self.terminal_output_lines.append(text)
+            
+            # Replace add_output temporarily
+            self.previous_state.add_output = terminal_add_output
+            try:
+                self.previous_state.execute_command(command)
+            finally:
+                # Restore original add_output
+                self.previous_state.add_output = original_add_output
+        else:
+            # Fallback: just echo the command
+            self.terminal_output_lines.append(f"Command: {command}")
+        
+        # Auto-scroll to bottom
+        self.terminal_scroll_offset = 0
+        
+        # Trim output if too long
+        if len(self.terminal_output_lines) > 1000:
+            self.terminal_output_lines = self.terminal_output_lines[-1000:]

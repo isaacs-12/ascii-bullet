@@ -42,6 +42,10 @@ class VSCodeEditorState(BaseState):
         self.cursor_line = 0
         self.cursor_col = 0
         
+        # Text selection state
+        self.selection_start = None  # (line, col) or None if no selection
+        self.selection_end = None    # (line, col) or None if no selection
+        
         # File contents cache: full_path -> list of lines
         self.file_contents = {}
         
@@ -52,6 +56,14 @@ class VSCodeEditorState(BaseState):
         # Message/status
         self.status_message = "Code Editor | ESC to quit | Click files to open"
         self.status_message_timeout = 0
+        
+        # Clipboard for copy/paste
+        self.clipboard = []
+        
+        # Key repeat tracking for arrow keys
+        self.key_repeat_state = {}  # key -> (last_press_time, repeat_count)
+        self.key_repeat_delay = 200  # ms before first repeat
+        self.key_repeat_interval = 30  # ms between repeats
     
     def enter(self):
         """Called when entering this state"""
@@ -452,6 +464,10 @@ class VSCodeEditorState(BaseState):
         for event in events:
             if event.type == pygame.KEYDOWN:
                 self._handle_keydown(event)
+            elif event.type == pygame.KEYUP:
+                # Clear key repeat state when key is released
+                if event.key in self.key_repeat_state:
+                    del self.key_repeat_state[event.key]
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 self._handle_mouse_click(event)
             elif event.type == pygame.MOUSEBUTTONUP:
@@ -479,6 +495,13 @@ class VSCodeEditorState(BaseState):
         if not lines:
             lines = [""]
         
+        # Check if Shift is held for selection
+        is_selecting = event.mod & pygame.KMOD_SHIFT
+        
+        # Save current cursor position before moving (for selection start)
+        prev_line = self.cursor_line
+        prev_col = self.cursor_col
+        
         # Navigation
         if event.key == pygame.K_UP:
             if self.cursor_line > 0:
@@ -487,6 +510,16 @@ class VSCodeEditorState(BaseState):
                 # Auto-scroll
                 if self.cursor_line < self.editor_scroll_y:
                     self.editor_scroll_y = self.cursor_line
+            # Handle selection
+            if is_selecting:
+                if self.selection_start is None:
+                    # Start new selection at previous position
+                    self.selection_start = (prev_line, prev_col)
+                self.selection_end = (self.cursor_line, self.cursor_col)
+            else:
+                self._clear_selection()
+            # Track for key repeat
+            self.key_repeat_state[pygame.K_UP] = (pygame.time.get_ticks(), 0)
         
         elif event.key == pygame.K_DOWN:
             if self.cursor_line < len(lines) - 1:
@@ -496,20 +529,66 @@ class VSCodeEditorState(BaseState):
                 editor_height = self.renderer.char_height - 3  # Leave room for tabs and status
                 if self.cursor_line >= self.editor_scroll_y + editor_height:
                     self.editor_scroll_y = self.cursor_line - editor_height + 1
+            # Handle selection
+            if is_selecting:
+                if self.selection_start is None:
+                    # Start new selection at previous position
+                    self.selection_start = (prev_line, prev_col)
+                self.selection_end = (self.cursor_line, self.cursor_col)
+            else:
+                self._clear_selection()
+            # Track for key repeat
+            self.key_repeat_state[pygame.K_DOWN] = (pygame.time.get_ticks(), 0)
         
         elif event.key == pygame.K_LEFT:
-            if self.cursor_col > 0:
-                self.cursor_col -= 1
+            # Check for Cmd/Ctrl modifier (go to start of line)
+            if event.mod & (pygame.KMOD_META | pygame.KMOD_CTRL):
+                self.cursor_col = 0
+            else:
+                if self.cursor_col > 0:
+                    self.cursor_col -= 1
+            # Handle selection
+            if is_selecting:
+                if self.selection_start is None:
+                    # Start new selection at previous position
+                    self.selection_start = (prev_line, prev_col)
+                self.selection_end = (self.cursor_line, self.cursor_col)
+            else:
+                self._clear_selection()
+            # Track for key repeat
+            self.key_repeat_state[pygame.K_LEFT] = (pygame.time.get_ticks(), 0)
         
         elif event.key == pygame.K_RIGHT:
-            if self.cursor_col < len(lines[self.cursor_line]):
-                self.cursor_col += 1
+            # Check for Cmd/Ctrl modifier (go to end of line)
+            if event.mod & (pygame.KMOD_META | pygame.KMOD_CTRL):
+                self.cursor_col = len(lines[self.cursor_line])
+            else:
+                if self.cursor_col < len(lines[self.cursor_line]):
+                    self.cursor_col += 1
+            # Handle selection
+            if is_selecting:
+                if self.selection_start is None:
+                    # Start new selection at previous position
+                    self.selection_start = (prev_line, prev_col)
+                self.selection_end = (self.cursor_line, self.cursor_col)
+            else:
+                self._clear_selection()
+            # Track for key repeat
+            self.key_repeat_state[pygame.K_RIGHT] = (pygame.time.get_ticks(), 0)
         
         elif event.key == pygame.K_HOME:
             self.cursor_col = 0
+            if event.mod & pygame.KMOD_SHIFT:
+                self._extend_selection()
+            else:
+                self._clear_selection()
         
         elif event.key == pygame.K_END:
             self.cursor_col = len(lines[self.cursor_line])
+            if event.mod & pygame.KMOD_SHIFT:
+                self._extend_selection()
+            else:
+                self._clear_selection()
         
         elif event.key == pygame.K_PAGEUP:
             editor_height = self.renderer.char_height - 3
@@ -537,22 +616,95 @@ class VSCodeEditorState(BaseState):
             if len(self.open_tabs) > 0:
                 self._close_tab(self.active_tab_index)
         
+        # Copy/Paste
+        elif event.mod & (pygame.KMOD_META | pygame.KMOD_CTRL) and event.key == pygame.K_c:
+            # Copy selection or current line
+            if len(self.open_tabs) > 0:
+                filename, full_path = self.open_tabs[self.active_tab_index]
+                lines = self.file_contents.get(full_path, [""])
+                if lines:
+                    if self._has_selection():
+                        # Copy selected text
+                        self.clipboard = self._get_selected_text(lines)
+                        self._show_status("Copied selection")
+                    elif 0 <= self.cursor_line < len(lines):
+                        # Copy current line if no selection
+                        self.clipboard = [lines[self.cursor_line]]
+                        self._show_status("Copied line")
+        
+        elif event.mod & (pygame.KMOD_META | pygame.KMOD_CTRL) and event.key == pygame.K_v:
+            # Paste clipboard (replaces selection if exists)
+            if len(self.open_tabs) > 0 and self.clipboard:
+                filename, full_path = self.open_tabs[self.active_tab_index]
+                lines = self.file_contents.get(full_path, [""])
+                if not lines:
+                    lines = [""]
+                
+                # Delete selection if it exists
+                if self._has_selection():
+                    lines, new_line, new_col = self._delete_selection(lines)
+                    self.cursor_line = new_line
+                    self.cursor_col = new_col
+                    self._clear_selection()
+                
+                # Insert clipboard lines at cursor
+                for i, clip_line in enumerate(self.clipboard):
+                    if i == 0:
+                        # First line: insert at cursor position
+                        current = lines[self.cursor_line]
+                        lines[self.cursor_line] = current[:self.cursor_col] + clip_line + current[self.cursor_col:]
+                        self.cursor_col += len(clip_line)
+                    else:
+                        # Additional lines: insert as new lines
+                        lines.insert(self.cursor_line + i, clip_line)
+                        self.cursor_line += 1
+                
+                self.file_contents[full_path] = lines
+                # Auto-save
+                self._save_file(full_path, lines)
+                self._show_status("Pasted")
+        
         # Editing
         elif event.key == pygame.K_RETURN:
-            # Insert new line
+            # Insert new line with auto-indentation
             current = lines[self.cursor_line]
+            
+            # Calculate indentation for new line based on original line
+            indent = self._calculate_indent(current)
+            
+            # Check if original line (before splitting) ends with colon or opening bracket
+            # This handles the case where we're pressing Enter in the middle of a line
+            original_stripped = current.rstrip()
+            if original_stripped and (original_stripped[-1] == ':' or original_stripped[-1] in '([{'):
+                indent += 4  # Python standard is 4 spaces
+            
+            # Split the line
             lines[self.cursor_line] = current[:self.cursor_col]
-            lines.insert(self.cursor_line + 1, current[self.cursor_col:])
+            new_line_content = current[self.cursor_col:]
+            
+            # Apply indentation to new line
+            new_line = ' ' * indent + new_line_content
+            lines.insert(self.cursor_line + 1, new_line)
             self.cursor_line += 1
-            self.cursor_col = 0
+            self.cursor_col = indent
             self.file_contents[full_path] = lines
             # Auto-save
             self._save_file(full_path, lines)
             self._show_status(f"Saved: {filename}")
         
         elif event.key == pygame.K_BACKSPACE:
-            # Delete character
-            if self.cursor_col > 0:
+            # Delete selection or character
+            if self._has_selection():
+                lines, new_line, new_col = self._delete_selection(lines)
+                self.cursor_line = new_line
+                self.cursor_col = new_col
+                self._clear_selection()
+                self.file_contents[full_path] = lines
+                # Auto-save
+                self._save_file(full_path, lines)
+                self._show_status(f"Saved: {filename}")
+            elif self.cursor_col > 0:
+                # Delete character
                 line = lines[self.cursor_line]
                 lines[self.cursor_line] = line[:self.cursor_col-1] + line[self.cursor_col:]
                 self.cursor_col -= 1
@@ -584,6 +736,13 @@ class VSCodeEditorState(BaseState):
                 self._show_status(f"Saved: {filename}")
         
         elif event.unicode and event.unicode.isprintable():
+            # Insert character (replaces selection if exists)
+            if self._has_selection():
+                lines, new_line, new_col = self._delete_selection(lines)
+                self.cursor_line = new_line
+                self.cursor_col = new_col
+                self._clear_selection()
+            
             # Insert character
             line = lines[self.cursor_line]
             lines[self.cursor_line] = line[:self.cursor_col] + event.unicode + line[self.cursor_col:]
@@ -592,6 +751,105 @@ class VSCodeEditorState(BaseState):
             # Auto-save
             self._save_file(full_path, lines)
             self._show_status(f"Saved: {filename}")
+    
+    def _calculate_indent(self, line):
+        """Calculate the indentation level (number of leading spaces) of a line"""
+        indent = 0
+        for char in line:
+            if char == ' ':
+                indent += 1
+            elif char == '\t':
+                indent += 4  # Treat tabs as 4 spaces
+            else:
+                break
+        return indent
+    
+    def _has_selection(self):
+        """Check if there is an active selection"""
+        return self.selection_start is not None and self.selection_end is not None
+    
+    def _clear_selection(self):
+        """Clear the current selection"""
+        self.selection_start = None
+        self.selection_end = None
+    
+    def _extend_selection(self):
+        """Extend or start selection from current cursor position"""
+        if self.selection_start is None:
+            # Start new selection
+            self.selection_start = (self.cursor_line, self.cursor_col)
+        # Update end of selection
+        self.selection_end = (self.cursor_line, self.cursor_col)
+    
+    def _normalize_selection(self):
+        """Ensure selection_start comes before selection_end"""
+        if not self._has_selection():
+            return
+        
+        start_line, start_col = self.selection_start
+        end_line, end_col = self.selection_end
+        
+        # Swap if end comes before start
+        if end_line < start_line or (end_line == start_line and end_col < start_col):
+            self.selection_start, self.selection_end = self.selection_end, self.selection_start
+    
+    def _get_selected_text(self, lines):
+        """Get the selected text as a list of lines"""
+        if not self._has_selection():
+            return []
+        
+        self._normalize_selection()
+        start_line, start_col = self.selection_start
+        end_line, end_col = self.selection_end
+        
+        selected_lines = []
+        
+        if start_line == end_line:
+            # Single line selection
+            line = lines[start_line]
+            selected_lines.append(line[start_col:end_col])
+        else:
+            # Multi-line selection
+            # First line: from start_col to end
+            first_line = lines[start_line]
+            selected_lines.append(first_line[start_col:])
+            
+            # Middle lines: entire lines
+            for line_num in range(start_line + 1, end_line):
+                selected_lines.append(lines[line_num])
+            
+            # Last line: from start to end_col
+            last_line = lines[end_line]
+            selected_lines.append(last_line[:end_col])
+        
+        return selected_lines
+    
+    def _delete_selection(self, lines):
+        """Delete the selected text and return (new_lines, new_line, new_col)"""
+        if not self._has_selection():
+            return lines, self.cursor_line, self.cursor_col
+        
+        self._normalize_selection()
+        start_line, start_col = self.selection_start
+        end_line, end_col = self.selection_end
+        
+        if start_line == end_line:
+            # Single line selection
+            line = lines[start_line]
+            lines[start_line] = line[:start_col] + line[end_col:]
+            return lines, start_line, start_col
+        else:
+            # Multi-line selection
+            # Merge first and last lines
+            first_line = lines[start_line]
+            last_line = lines[end_line]
+            lines[start_line] = first_line[:start_col] + last_line[end_col:]
+            
+            # Delete middle lines (in reverse to maintain indices)
+            for line_num in range(end_line, start_line, -1):
+                del lines[line_num]
+            
+            return lines, start_line, start_col
     
     def _handle_mouse_click(self, event):
         """Handle mouse clicks"""
@@ -719,6 +977,9 @@ class VSCodeEditorState(BaseState):
                 # Clamp to line length
                 self.cursor_col = min(col_offset, len(line))
         
+        # Clear selection when clicking
+        self._clear_selection()
+        
         # Auto-scroll to keep cursor visible if needed
         editor_height = self.renderer.char_height - 3
         if self.cursor_line < self.editor_scroll_y:
@@ -762,7 +1023,78 @@ class VSCodeEditorState(BaseState):
         if self.status_message_timeout > 0:
             self.status_message_timeout -= 1
             if self.status_message_timeout == 0:
-                self.status_message = "VSCode Editor | ESC to quit | Click files to open"
+                self.status_message = "Code Editor | ESC to quit | Click files to open"
+        
+        # Handle key repeat for arrow keys
+        if len(self.open_tabs) > 0:
+            filename, full_path = self.open_tabs[self.active_tab_index]
+            lines = self.file_contents.get(full_path, [""])
+            if not lines:
+                lines = [""]
+            
+            current_time = pygame.time.get_ticks()
+            keys_to_remove = []
+            
+            for key, (press_time, repeat_count) in list(self.key_repeat_state.items()):
+                # Check if key is still held down
+                keys = pygame.key.get_pressed()
+                if not keys[key]:
+                    keys_to_remove.append(key)
+                    continue
+                
+                # Calculate time since last action
+                if repeat_count == 0:
+                    # First repeat - use longer delay
+                    delay = self.key_repeat_delay
+                else:
+                    # Subsequent repeats - use shorter interval
+                    delay = self.key_repeat_interval
+                
+                if current_time - press_time >= delay:
+                    # Check if Shift is held for selection
+                    keys = pygame.key.get_pressed()
+                    is_selecting = keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
+                    
+                    # Save previous position for selection
+                    prev_line = self.cursor_line
+                    prev_col = self.cursor_col
+                    
+                    # Time to repeat
+                    if key == pygame.K_LEFT:
+                        if self.cursor_col > 0:
+                            self.cursor_col -= 1
+                    elif key == pygame.K_RIGHT:
+                        if self.cursor_col < len(lines[self.cursor_line]):
+                            self.cursor_col += 1
+                    elif key == pygame.K_UP:
+                        if self.cursor_line > 0:
+                            self.cursor_line -= 1
+                            self.cursor_col = min(self.cursor_col, len(lines[self.cursor_line]))
+                            if self.cursor_line < self.editor_scroll_y:
+                                self.editor_scroll_y = self.cursor_line
+                    elif key == pygame.K_DOWN:
+                        if self.cursor_line < len(lines) - 1:
+                            self.cursor_line += 1
+                            self.cursor_col = min(self.cursor_col, len(lines[self.cursor_line]))
+                            editor_height = self.renderer.char_height - 3
+                            if self.cursor_line >= self.editor_scroll_y + editor_height:
+                                self.editor_scroll_y = self.cursor_line - editor_height + 1
+                    
+                    # Handle selection
+                    if is_selecting:
+                        if self.selection_start is None:
+                            # Start new selection at previous position
+                            self.selection_start = (prev_line, prev_col)
+                        self.selection_end = (self.cursor_line, self.cursor_col)
+                    else:
+                        self._clear_selection()
+                    
+                    # Update repeat state
+                    self.key_repeat_state[key] = (current_time, repeat_count + 1)
+            
+            # Remove keys that are no longer pressed
+            for key in keys_to_remove:
+                del self.key_repeat_state[key]
     
     def render(self):
         """Render the editor"""
@@ -844,6 +1176,34 @@ class VSCodeEditorState(BaseState):
                 line = lines[i]
                 line_start_x = editor_start_x + line_num_width + 1
                 
+                # Check if there's a selection on this line
+                is_selected = False
+                sel_start_col = -1
+                sel_end_col = -1
+                if self._has_selection():
+                    self._normalize_selection()
+                    start_line, start_col = self.selection_start
+                    end_line, end_col = self.selection_end
+                    
+                    if start_line <= i <= end_line:
+                        is_selected = True
+                        if start_line == end_line:
+                            # Single line selection
+                            sel_start_col = start_col
+                            sel_end_col = end_col
+                        elif i == start_line:
+                            # First line of multi-line selection
+                            sel_start_col = start_col
+                            sel_end_col = len(line)
+                        elif i == end_line:
+                            # Last line of multi-line selection
+                            sel_start_col = 0
+                            sel_end_col = end_col
+                        else:
+                            # Middle line of multi-line selection
+                            sel_start_col = 0
+                            sel_end_col = len(line)
+                
                 # Check if it's a Python file
                 is_python = filename.endswith('.py')
                 
@@ -852,22 +1212,30 @@ class VSCodeEditorState(BaseState):
                     tokens = self._python_syntax_highlight(line)
                     x_offset = 0
                     for token_type, token_text in tokens:
+                        # Determine base color for this token
                         if token_type == 'keyword':
-                            color = (100, 200, 255)  # Light blue
+                            base_color = (100, 200, 255)  # Light blue
                         elif token_type == 'string':
-                            color = (200, 255, 100)  # Light green
+                            base_color = (200, 255, 100)  # Light green
                         elif token_type == 'comment':
-                            color = (150, 150, 150)  # Gray
+                            base_color = (150, 150, 150)  # Gray
                         elif token_type == 'function':
-                            color = (255, 200, 100)  # Orange/yellow for function calls
+                            base_color = (255, 200, 100)  # Orange/yellow for function calls
                         elif token_type == 'number':
-                            color = (150, 200, 255)  # Light blue for numbers
+                            base_color = (150, 200, 255)  # Light blue for numbers
                         else:
-                            color = (255, 255, 255)  # White
+                            base_color = (255, 255, 255)  # White
                         
                         # Write token
                         for char in token_text:
                             if line_start_x + x_offset < self.renderer.char_width:
+                                # Check if this character is selected
+                                if is_selected and sel_start_col <= x_offset < sel_end_col:
+                                    # Use bright cyan for selected text
+                                    color = (0, 255, 255)  # Bright cyan
+                                else:
+                                    color = base_color
+                                
                                 # Handle special characters that might break rendering
                                 try:
                                     self.renderer.write(line_start_x + x_offset, y, char, color)
@@ -877,8 +1245,14 @@ class VSCodeEditorState(BaseState):
                 else:
                     # No syntax highlighting
                     max_width = self.renderer.char_width - line_start_x
-                    display_line = line[:max_width]
-                    self.renderer.write(line_start_x, y, display_line, (255, 255, 255))
+                    for col in range(min(max_width, len(line))):
+                        char = line[col]
+                        # Check if this character is selected
+                        if is_selected and sel_start_col <= col < sel_end_col:
+                            color = (0, 255, 255)  # Bright cyan for selection
+                        else:
+                            color = (255, 255, 255)  # White
+                        self.renderer.write(line_start_x + col, y, char, color)
                 
                 # Show cursor on current line
                 if i == self.cursor_line:
@@ -908,7 +1282,10 @@ class VSCodeEditorState(BaseState):
             is_active = (i == self.active_tab_index)
             
             # Tab background
-            tab_text = f" {filename} [X] "
+            if i == 0:
+                tab_text = f" {filename} [X] "
+            else:
+                tab_text = f"/ {filename} [X] "
             tab_color = (200, 200, 200) if is_active else (100, 100, 100)
             
             # Draw tab

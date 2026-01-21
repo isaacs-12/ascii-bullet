@@ -1628,8 +1628,9 @@ class MainMenuState(BaseState):
             self.add_output("Commands: status, start, stop, enable, disable, list-units, list-unit-files")
             self.add_output("")
         
-        elif cmd_lower in ["stat", "cat", "touch", "mkdir", "rm", "mv", "chmod", "vim", "vi", "edit", "emacs", "python", "run", "kill", "man", "cd", "systemctl"]:
+        elif cmd_lower in ["stat", "cat", "touch", "mkdir", "rm", "rmdir", "mv", "chmod", "vim", "vi", "edit", "emacs", "python", "run", "kill", "man", "cd"]:
             # Commands that require arguments - show usage
+            # Note: systemctl is handled separately above
             if cmd_lower == "stat":
                 self.add_output("stat: missing file operand")
                 self.add_output("Usage: stat <filename>")
@@ -1642,6 +1643,9 @@ class MainMenuState(BaseState):
             elif cmd_lower == "mkdir":
                 self.add_output("mkdir: missing directory operand")
                 self.add_output("Usage: mkdir <directory>")
+            elif cmd_lower == "rmdir":
+                self.add_output("rmdir: missing directory operand")
+                self.add_output("Usage: rmdir <directory>")
             elif cmd_lower == "rm":
                 self.add_output("rm: missing operand")
                 self.add_output("Usage: rm <filename>")

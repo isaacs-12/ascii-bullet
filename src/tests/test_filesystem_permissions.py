@@ -258,3 +258,183 @@ class TestFilesystemPermissions(unittest.TestCase):
         self.assertEqual(new_fs.file_permissions['/home/pilot/blthll/test_save2.txt'],
                         'rw-rw-rw-',
                         "Permissions should be restored correctly")
+    
+    def test_chmod_own_file_as_pilot(self):
+        """Test that pilot can chmod files they own"""
+        self.filesystem.change_directory('/home/pilot/blthll')
+        self.filesystem.create_file('my_file.txt', ['content'])
+        
+        # Pilot should be able to chmod their own file
+        success, error = self.filesystem.set_permissions('my_file.txt', '777')
+        self.assertTrue(success, f"Pilot should be able to chmod own file: {error}")
+        
+        perms = self.filesystem.get_permissions('my_file.txt')
+        self.assertEqual(perms, 'rwxrwxrwx', "Permissions should be updated")
+    
+    def test_chmod_root_file_as_pilot_denied(self):
+        """Test that pilot cannot chmod files owned by root"""
+        self.filesystem.change_directory('/system/core')
+        
+        # Try to chmod root-owned file as pilot
+        success, error = self.filesystem.set_permissions('init.py', '777')
+        self.assertFalse(success, "Pilot should not be able to chmod root-owned file")
+        self.assertIn("Operation not permitted", error,
+                     "Error should indicate permission denied")
+        
+        # Verify permissions were not changed
+        perms = self.filesystem.get_permissions('init.py')
+        self.assertNotEqual(perms, 'rwxrwxrwx',
+                          "Permissions should not be changed")
+    
+    def test_chmod_root_file_as_root_allowed(self):
+        """Test that root can chmod any file"""
+        self.filesystem.change_directory('/system/core')
+        self.filesystem.set_user('root')
+        
+        # Root should be able to chmod root-owned file
+        success, error = self.filesystem.set_permissions('init.py', '777')
+        self.assertTrue(success, f"Root should be able to chmod any file: {error}")
+        
+        perms = self.filesystem.get_permissions('init.py')
+        self.assertEqual(perms, 'rwxrwxrwx', "Permissions should be updated")
+    
+    def test_chmod_pilot_file_as_root_allowed(self):
+        """Test that root can chmod pilot-owned files"""
+        self.filesystem.change_directory('/home/pilot/blthll')
+        self.filesystem.create_file('pilot_file.txt', ['content'])
+        self.filesystem.set_user('root')
+        
+        # Root should be able to chmod pilot-owned file
+        success, error = self.filesystem.set_permissions('pilot_file.txt', '644')
+        self.assertTrue(success, f"Root should be able to chmod pilot file: {error}")
+        
+        perms = self.filesystem.get_permissions('pilot_file.txt')
+        self.assertEqual(perms, 'rw-r--r--', "Permissions should be updated")
+    
+    def test_chmod_777_combinations(self):
+        """Test chmod 777 with various ownership combinations"""
+        # Test 1: Pilot chmods own file to 777
+        self.filesystem.change_directory('/home/pilot/blthll')
+        self.filesystem.create_file('test777_1.txt', ['content'])
+        success, _ = self.filesystem.set_permissions('test777_1.txt', '777')
+        self.assertTrue(success, "Pilot should chmod own file to 777")
+        self.assertEqual(self.filesystem.get_permissions('test777_1.txt'), 'rwxrwxrwx')
+        
+        # Test 2: Pilot tries to chmod root file to 777 (should fail)
+        self.filesystem.change_directory('/system/core')
+        success, error = self.filesystem.set_permissions('init.py', '777')
+        self.assertFalse(success, "Pilot should not chmod root file")
+        self.assertIn("Operation not permitted", error)
+        
+        # Test 3: Root chmods root file to 777 (should succeed)
+        self.filesystem.set_user('root')
+        success, _ = self.filesystem.set_permissions('init.py', '777')
+        self.assertTrue(success, "Root should chmod root file to 777")
+        self.assertEqual(self.filesystem.get_permissions('init.py'), 'rwxrwxrwx')
+    
+    def test_chmod_644_combinations(self):
+        """Test chmod 644 with various ownership combinations"""
+        # Test 1: Pilot chmods own file to 644
+        self.filesystem.change_directory('/home/pilot/blthll')
+        self.filesystem.create_file('test644_1.txt', ['content'])
+        success, _ = self.filesystem.set_permissions('test644_1.txt', '644')
+        self.assertTrue(success, "Pilot should chmod own file to 644")
+        self.assertEqual(self.filesystem.get_permissions('test644_1.txt'), 'rw-r--r--')
+        
+        # Test 2: Pilot tries to chmod root file to 644 (should fail)
+        self.filesystem.change_directory('/system/core')
+        self.filesystem.set_user('pilot')
+        success, error = self.filesystem.set_permissions('init.py', '644')
+        self.assertFalse(success, "Pilot should not chmod root file")
+        self.assertIn("Operation not permitted", error)
+        
+        # Test 3: Root chmods root file to 644 (should succeed)
+        self.filesystem.set_user('root')
+        success, _ = self.filesystem.set_permissions('init.py', '644')
+        self.assertTrue(success, "Root should chmod root file to 644")
+        self.assertEqual(self.filesystem.get_permissions('init.py'), 'rw-r--r--')
+    
+    def test_chmod_755_combinations(self):
+        """Test chmod 755 with various ownership combinations"""
+        # Test 1: Pilot chmods own file to 755
+        self.filesystem.change_directory('/home/pilot/blthll')
+        self.filesystem.create_file('test755_1.txt', ['content'])
+        success, _ = self.filesystem.set_permissions('test755_1.txt', '755')
+        self.assertTrue(success, "Pilot should chmod own file to 755")
+        self.assertEqual(self.filesystem.get_permissions('test755_1.txt'), 'rwxr-xr-x')
+        
+        # Test 2: Pilot tries to chmod root file to 755 (should fail)
+        self.filesystem.change_directory('/system/core')
+        self.filesystem.set_user('pilot')
+        success, error = self.filesystem.set_permissions('init.py', '755')
+        self.assertFalse(success, "Pilot should not chmod root file")
+        self.assertIn("Operation not permitted", error)
+        
+        # Test 3: Root chmods root file to 755 (should succeed)
+        self.filesystem.set_user('root')
+        success, _ = self.filesystem.set_permissions('init.py', '755')
+        self.assertTrue(success, "Root should chmod root file to 755")
+        self.assertEqual(self.filesystem.get_permissions('init.py'), 'rwxr-xr-x')
+    
+    def test_chmod_000_combinations(self):
+        """Test chmod 000 (no permissions) with various ownership combinations"""
+        # Test 1: Pilot chmods own file to 000
+        self.filesystem.change_directory('/home/pilot/blthll')
+        self.filesystem.create_file('test000_1.txt', ['content'])
+        success, _ = self.filesystem.set_permissions('test000_1.txt', '000')
+        self.assertTrue(success, "Pilot should chmod own file to 000")
+        self.assertEqual(self.filesystem.get_permissions('test000_1.txt'), '---------')
+        
+        # Test 2: Pilot tries to chmod root file to 000 (should fail)
+        self.filesystem.change_directory('/system/core')
+        self.filesystem.set_user('pilot')
+        success, error = self.filesystem.set_permissions('init.py', '000')
+        self.assertFalse(success, "Pilot should not chmod root file")
+        self.assertIn("Operation not permitted", error)
+        
+        # Test 3: Root chmods root file to 000 (should succeed)
+        self.filesystem.set_user('root')
+        success, _ = self.filesystem.set_permissions('init.py', '000')
+        self.assertTrue(success, "Root should chmod root file to 000")
+        self.assertEqual(self.filesystem.get_permissions('init.py'), '---------')
+    
+    def test_chmod_symbolic_format_ownership(self):
+        """Test chmod with symbolic format (rwx, rw-, etc.) and ownership checks"""
+        self.filesystem.change_directory('/home/pilot/blthll')
+        self.filesystem.create_file('test_sym.txt', ['content'])
+        
+        # Pilot chmods own file with symbolic format
+        success, _ = self.filesystem.set_permissions('test_sym.txt', 'rw-')
+        self.assertTrue(success, "Pilot should chmod own file with symbolic format")
+        self.assertEqual(self.filesystem.get_permissions('test_sym.txt'), 'rw-rw-rw-')
+        
+        # Pilot tries to chmod root file with symbolic format (should fail)
+        self.filesystem.change_directory('/system/core')
+        self.filesystem.set_user('pilot')
+        success, error = self.filesystem.set_permissions('init.py', 'rwx')
+        self.assertFalse(success, "Pilot should not chmod root file")
+        self.assertIn("Operation not permitted", error)
+    
+    def test_chmod_directory_ownership(self):
+        """Test chmod on directories with ownership checks"""
+        # Test 1: Pilot chmods own directory
+        self.filesystem.change_directory('/home/pilot/blthll')
+        self.filesystem.create_directory('my_dir')
+        success, _ = self.filesystem.set_permissions('my_dir/', '755')
+        self.assertTrue(success, "Pilot should chmod own directory")
+        self.assertEqual(self.filesystem.get_permissions('my_dir/'), 'rwxr-xr-x')
+        
+        # Test 2: Pilot tries to chmod root-owned directory (should fail)
+        # Navigate to root and try to chmod /system/core (which is owned by root)
+        self.filesystem.change_directory('/system')
+        self.filesystem.set_user('pilot')
+        # /system/core is owned by root (from default_file_owners)
+        success, error = self.filesystem.set_permissions('core/', '755')
+        self.assertFalse(success, "Pilot should not chmod root directory")
+        self.assertIn("Operation not permitted", error)
+        
+        # Test 3: Root chmods root directory (should succeed)
+        self.filesystem.set_user('root')
+        success, _ = self.filesystem.set_permissions('core/', '755')
+        self.assertTrue(success, "Root should chmod root directory")
+        self.assertEqual(self.filesystem.get_permissions('core/'), 'rwxr-xr-x')

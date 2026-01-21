@@ -125,7 +125,11 @@ class SaveSystem:
             "filesystem": None,  # Will store user modifications
             
             # Command history (only commands, not outputs)
-            "command_history": []  # List of command strings
+            "command_history": [],  # List of command strings
+            
+            # Systemd state
+            "systemd_states": {},  # Service name -> state mapping
+            "systemd_enabled": []  # List of enabled service names
         }
     
     def save(self):
@@ -590,4 +594,33 @@ class SaveSystem:
         commands_to_save = command_history[-max_items:] if len(command_history) > max_items else command_history
         self.data["command_history"] = commands_to_save
         self.save()
+    
+    # Systemd state persistence
+    def save_systemd_states(self, states):
+        """
+        Save systemd service states
+        
+        Args:
+            states: Dictionary mapping service names to states
+        """
+        self.data["systemd_states"] = states
+        self.save()
+    
+    def get_systemd_states(self):
+        """Get saved systemd service states"""
+        return self.data.get("systemd_states", None)
+    
+    def save_systemd_enabled(self, enabled_services):
+        """
+        Save list of enabled systemd services
+        
+        Args:
+            enabled_services: List of enabled service names
+        """
+        self.data["systemd_enabled"] = enabled_services
+        self.save()
+    
+    def get_systemd_enabled(self):
+        """Get saved list of enabled systemd services"""
+        return self.data.get("systemd_enabled", None)
 

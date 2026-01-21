@@ -93,6 +93,10 @@ class MainMenuState(BaseState):
         from src.unix.process_manager import ProcessManager
         self.process_manager = ProcessManager(save_system=game.save_system)
         
+        # Systemd manager
+        from src.unix.systemd_manager import SystemdManager
+        self.systemd_manager = SystemdManager(self.filesystem, save_system=game.save_system)
+        
         # Konami code tracking
         self.konami_sequence = []
         self.konami_code = ['up', 'up', 'down', 'down', 'left', 'right', 'left', 'right', 'b', 'a']
@@ -1554,7 +1558,77 @@ class MainMenuState(BaseState):
                 self.add_output(f"kill: invalid process id: {command[5:].strip()}")
                 self.add_output("")
         
-        elif cmd_lower in ["stat", "cat", "touch", "mkdir", "rm", "mv", "chmod", "vim", "vi", "edit", "emacs", "python", "run", "kill", "man", "cd"]:
+        elif cmd_lower.startswith("systemctl "):
+            # Systemd control command
+            args = command[10:].strip().split()
+            if not args:
+                self.add_output("systemctl: missing command")
+                self.add_output("Usage: systemctl <command> [service]")
+                self.add_output("Commands: status, start, stop, enable, disable, list-units, list-unit-files")
+                self.add_output("")
+            else:
+                subcommand = args[0].lower()
+                service_name = args[1] if len(args) > 1 else None
+                
+                if subcommand == "status":
+                    if not service_name:
+                        self.add_output("systemctl status: missing service name")
+                        self.add_output("Usage: systemctl status <service>")
+                        self.add_output("")
+                    else:
+                        self._systemctl_status(service_name)
+                
+                elif subcommand == "start":
+                    if not service_name:
+                        self.add_output("systemctl start: missing service name")
+                        self.add_output("Usage: systemctl start <service>")
+                        self.add_output("")
+                    else:
+                        self._systemctl_start(service_name)
+                
+                elif subcommand == "stop":
+                    if not service_name:
+                        self.add_output("systemctl stop: missing service name")
+                        self.add_output("Usage: systemctl stop <service>")
+                        self.add_output("")
+                    else:
+                        self._systemctl_stop(service_name)
+                
+                elif subcommand == "enable":
+                    if not service_name:
+                        self.add_output("systemctl enable: missing service name")
+                        self.add_output("Usage: systemctl enable <service>")
+                        self.add_output("")
+                    else:
+                        self._systemctl_enable(service_name)
+                
+                elif subcommand == "disable":
+                    if not service_name:
+                        self.add_output("systemctl disable: missing service name")
+                        self.add_output("Usage: systemctl disable <service>")
+                        self.add_output("")
+                    else:
+                        self._systemctl_disable(service_name)
+                
+                elif subcommand == "list-units":
+                    self._systemctl_list_units()
+                
+                elif subcommand == "list-unit-files":
+                    self._systemctl_list_unit_files()
+                
+                else:
+                    self.add_output(f"systemctl: unknown command '{subcommand}'")
+                    self.add_output("Usage: systemctl <command> [service]")
+                    self.add_output("Commands: status, start, stop, enable, disable, list-units, list-unit-files")
+                    self.add_output("")
+        
+        elif cmd_lower == "systemctl":
+            self.add_output("systemctl: missing command")
+            self.add_output("Usage: systemctl <command> [service]")
+            self.add_output("Commands: status, start, stop, enable, disable, list-units, list-unit-files")
+            self.add_output("")
+        
+        elif cmd_lower in ["stat", "cat", "touch", "mkdir", "rm", "mv", "chmod", "vim", "vi", "edit", "emacs", "python", "run", "kill", "man", "cd", "systemctl"]:
             # Commands that require arguments - show usage
             if cmd_lower == "stat":
                 self.add_output("stat: missing file operand")
@@ -2029,6 +2103,115 @@ class MainMenuState(BaseState):
         else:
             self.add_output(message)
         
+        self.add_output("")
+    
+    def _systemctl_status(self, service_name):
+        """Show status of a systemd service"""
+        state = self.systemd_manager.get_service_state(service_name)
+        enabled = self.systemd_manager.is_enabled(service_name)
+        
+        # Normalize service name
+        if not service_name.endswith('.service'):
+            service_name = service_name + '.service'
+        
+        # Check if unit file exists
+        if not self.systemd_manager._unit_file_exists(service_name):
+            self.add_output(f"● {service_name} - not found")
+            self.add_output("")
+            return
+        
+        # Format status output similar to real systemctl
+        status_symbol = "●" if state == 'active' else "○"
+        state_display = state.capitalize()
+        enabled_display = "enabled" if enabled else "disabled"
+        
+        self.add_output(f"{status_symbol} {service_name} - {state_display} ({enabled_display})")
+        self.add_output("")
+    
+    def _systemctl_start(self, service_name):
+        """Start a systemd service"""
+        success, message = self.systemd_manager.start_service(service_name)
+        self.add_output(message)
+        self.add_output("")
+    
+    def _systemctl_stop(self, service_name):
+        """Stop a systemd service"""
+        success, message = self.systemd_manager.stop_service(service_name)
+        self.add_output(message)
+        self.add_output("")
+    
+    def _systemctl_enable(self, service_name):
+        """Enable a systemd service"""
+        # Require root privileges
+        if self.filesystem.get_current_user() != "root":
+            self.add_output(f"systemctl: Operation failed: Access denied")
+            self.add_output("Note: Enabling services requires root privileges. Use 'sudo systemctl enable <service>'")
+            self.add_output("")
+            return
+        
+        success, message = self.systemd_manager.enable_service(service_name)
+        self.add_output(message)
+        self.add_output("")
+    
+    def _systemctl_disable(self, service_name):
+        """Disable a systemd service"""
+        # Require root privileges
+        if self.filesystem.get_current_user() != "root":
+            self.add_output(f"systemctl: Operation failed: Access denied")
+            self.add_output("Note: Disabling services requires root privileges. Use 'sudo systemctl disable <service>'")
+            self.add_output("")
+            return
+        
+        success, message = self.systemd_manager.disable_service(service_name)
+        self.add_output(message)
+        self.add_output("")
+    
+    def _systemctl_list_units(self):
+        """List all systemd units"""
+        units = self.systemd_manager.list_units()
+        
+        if not units:
+            self.add_output("No units found.")
+            self.add_output("")
+            return
+        
+        # Header
+        self.add_output(f"{'UNIT':<30} {'LOAD':<8} {'ACTIVE':<12} {'SUB':<12} {'ENABLED':<10}")
+        self.add_output("-" * 80)
+        
+        # List units
+        for service_name, state, enabled in units:
+            load = "loaded"
+            active = state
+            sub = "running" if state == 'active' else "dead"
+            enabled_str = "enabled" if enabled else "disabled"
+            
+            self.add_output(f"{service_name:<30} {load:<8} {active:<12} {sub:<12} {enabled_str:<10}")
+        
+        self.add_output("")
+        self.add_output(f"{len(units)} unit(s) listed.")
+        self.add_output("")
+    
+    def _systemctl_list_unit_files(self):
+        """List all systemd unit files"""
+        unit_files = self.systemd_manager.list_unit_files()
+        
+        if not unit_files:
+            self.add_output("No unit files found.")
+            self.add_output("")
+            return
+        
+        # Header
+        self.add_output(f"{'UNIT FILE':<40} {'STATE':<12} {'LOCATION':<30}")
+        self.add_output("-" * 90)
+        
+        # List unit files
+        for service_name, location, enabled in unit_files:
+            state = "enabled" if enabled else "disabled"
+            self.add_output(f"{service_name:<40} {state:<12} {location:<30}")
+        
+        self.add_output("")
+        self.add_output(f"{len(unit_files)} unit file(s) listed.")
         self.add_output("")
     
     def get_prompt(self):

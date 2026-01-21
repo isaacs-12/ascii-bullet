@@ -40,6 +40,8 @@ class VirtualFileSystem:
         # File ownership system
         self.current_user = "pilot"  # Current user (can be "pilot" or "root")
         self.default_file_owners = self._get_default_file_owners()
+        # Track ownership for moved/modified files (path -> owner)
+        self.file_owners = {}  # path -> owner username
         
         # File timestamps: path -> {'access': datetime, 'modify': datetime, 'change': datetime}
         # All timestamps are stored as ISO format strings for JSON serialization
@@ -113,6 +115,20 @@ class VirtualFileSystem:
             '/system': 'root',
             '/system/core': 'root',
             '/system/core/init.py': 'root',
+            # Systemd directories owned by root
+            '/usr': 'root',
+            '/usr/lib': 'root',
+            '/usr/lib/systemd': 'root',
+            '/usr/lib/systemd/system': 'root',
+            # Systemd unit files owned by root
+            '/usr/lib/systemd/system/blthll.service': 'root',
+            '/usr/lib/systemd/system/network.service': 'root',
+            '/usr/lib/systemd/system/sshd.service': 'root',
+            '/run': 'root',
+            '/run/systemd': 'root',
+            '/run/systemd/system': 'root',
+            '/etc/systemd': 'root',
+            '/etc/systemd/system': 'root',
         }
     
     def _initialize_default_timestamps(self):
@@ -352,11 +368,88 @@ class VirtualFileSystem:
         )
         
         etc_dir = self._make_dir('etc',
+            dirs={
+                'systemd': self._make_dir('systemd',
+                    dirs={
+                        'system': self._make_dir('system', files={})
+                    }
+                )
+            },
             files={
                 'motd': self._make_file('motd', [
                     "Welcome to BLTHLL Terminal System",
                     "Unauthorized access will result in more bullets."
                 ])
+            }
+        )
+        
+        # Create /usr/lib/systemd/system/ directory structure with default unit files
+        # Systemd unit files should be readable by all, writable only by root
+        systemd_system_dir = self._make_dir('system',
+            files={
+                'blthll.service': self._make_file('blthll.service', [
+                    "[Unit]",
+                    "Description=BLTHLL Terminal Service",
+                    "After=network.target",
+                    "",
+                    "[Service]",
+                    "Type=simple",
+                    "ExecStart=/usr/bin/blthll",
+                    "Restart=on-failure",
+                    "",
+                    "[Install]",
+                    "WantedBy=multi-user.target"
+                ], permissions='rw-r--r--'),  # Readable by all, writable by owner (root)
+                'network.service': self._make_file('network.service', [
+                    "[Unit]",
+                    "Description=Network Service",
+                    "After=network-pre.target",
+                    "",
+                    "[Service]",
+                    "Type=oneshot",
+                    "RemainAfterExit=yes",
+                    "",
+                    "[Install]",
+                    "WantedBy=multi-user.target"
+                ], permissions='rw-r--r--'),  # Readable by all, writable by owner (root)
+                'sshd.service': self._make_file('sshd.service', [
+                    "[Unit]",
+                    "Description=OpenSSH Server",
+                    "After=network.target",
+                    "",
+                    "[Service]",
+                    "Type=notify",
+                    "ExecStart=/usr/sbin/sshd -D",
+                    "Restart=on-failure",
+                    "",
+                    "[Install]",
+                    "WantedBy=multi-user.target"
+                ], permissions='rw-r--r--')  # Readable by all, writable by owner (root)
+            }
+        )
+        
+        usr_dir = self._make_dir('usr',
+            dirs={
+                'lib': self._make_dir('lib',
+                    dirs={
+                        'systemd': self._make_dir('systemd',
+                            dirs={
+                                'system': systemd_system_dir
+                            }
+                        )
+                    }
+                )
+            }
+        )
+        
+        # Create /run/systemd/system/ directory structure
+        run_dir = self._make_dir('run',
+            dirs={
+                'systemd': self._make_dir('systemd',
+                    dirs={
+                        'system': self._make_dir('system', files={})
+                    }
+                )
             }
         )
         
@@ -387,6 +480,8 @@ class VirtualFileSystem:
         return {
             'home': home_dir,
             'etc': etc_dir,
+            'usr': usr_dir,
+            'run': run_dir,
             'system': system_dir
         }
     
@@ -854,7 +949,11 @@ class VirtualFileSystem:
         # Normalize double slashes at root
         full_path = full_path.replace('//', '/')
         
-        # Check if file has a defined owner
+        # Check if file has a defined owner (moved/modified files)
+        if full_path in self.file_owners:
+            return self.file_owners[full_path]
+        
+        # Check default file owners
         if full_path in self.default_file_owners:
             return self.default_file_owners[full_path]
         
@@ -1085,20 +1184,27 @@ class VirtualFileSystem:
         is_default = (source_full not in self.user_created_files and 
                      source_full not in self.user_modified_files)
         
-        # Get source permissions before moving
+        # Get source permissions and ownership before moving
         source_permissions = None
+        source_owner = None
         if is_default:
             # Get permissions from default filesystem structure
             source_dir = self.get_current_directory()
             if 'files' in source_dir and source in source_dir['files']:
                 file_entry = source_dir['files'][source]
                 source_permissions = self._extract_file_permissions(file_entry, source, source_full)
+            # Get ownership from default_file_owners
+            source_owner = self.get_file_owner(source)
         elif source_full in self.file_permissions:
             # Get user-set permissions
             source_permissions = self.file_permissions[source_full]
+            # Get ownership (could be from file_owners or default_file_owners)
+            source_owner = self.get_file_owner(source)
         else:
             # Default permissions for user-created files
             source_permissions = "rwxrwxrwx"
+            # Get ownership
+            source_owner = self.get_file_owner(source)
         
         # Perform the move
         if source_full in self.user_created_files:
@@ -1107,12 +1213,20 @@ class VirtualFileSystem:
             if source_full in self.file_permissions:
                 source_permissions = self.file_permissions[source_full]
                 del self.file_permissions[source_full]
+            # Preserve ownership if it was explicitly set
+            if source_full in self.file_owners:
+                source_owner = self.file_owners[source_full]
+                del self.file_owners[source_full]
         elif source_full in self.user_modified_files:
             del self.user_modified_files[source_full]
             # Preserve permissions if they were set
             if source_full in self.file_permissions:
                 source_permissions = self.file_permissions[source_full]
                 del self.file_permissions[source_full]
+            # Preserve ownership if it was explicitly set
+            if source_full in self.file_owners:
+                source_owner = self.file_owners[source_full]
+                del self.file_owners[source_full]
         elif is_default:
             # Mark default file as deleted from source location
             self.user_deleted_files.add(source_full)
@@ -1123,6 +1237,13 @@ class VirtualFileSystem:
         # Preserve permissions at destination (unless they're the default 'rwxrwxrwx')
         if source_permissions and source_permissions != "rwxrwxrwx":
             self.file_permissions[dest_full] = source_permissions
+        
+        # Preserve ownership at destination (unless it would default to current user anyway)
+        # Only preserve if source was owned by root or explicitly set
+        if source_owner:
+            # If source was root-owned or explicitly set in file_owners, preserve it
+            if source_owner != self.current_user or source_full in self.file_owners:
+                self.file_owners[dest_full] = source_owner
         
         return (True, None)
     
@@ -1255,6 +1376,7 @@ class VirtualFileSystem:
             'user_modified_files': self.user_modified_files,
             'user_deleted_files': list(self.user_deleted_files),
             'file_permissions': self.file_permissions,
+            'file_owners': self.file_owners,
             'file_timestamps': self.file_timestamps,
             # Note: current_user is NOT saved - always start as 'pilot'
         }
@@ -1273,6 +1395,8 @@ class VirtualFileSystem:
             self.user_deleted_files = set(state['user_deleted_files'])
         if 'file_permissions' in state:
             self.file_permissions = state['file_permissions']
+        if 'file_owners' in state:
+            self.file_owners = state['file_owners']
         if 'file_timestamps' in state:
             self.file_timestamps = state['file_timestamps']
         else:
@@ -1287,6 +1411,7 @@ class VirtualFileSystem:
         self.user_modified_files = {}
         self.user_deleted_files = set()
         self.file_permissions = {}
+        self.file_owners = {}
         self.file_timestamps = {}
         self.current_user = "pilot"
         # Re-initialize default timestamps
@@ -1449,6 +1574,9 @@ class VirtualFileSystem:
             # Remove permissions if set
             if file_path in self.file_permissions:
                 del self.file_permissions[file_path]
+            # Remove ownership if set
+            if file_path in self.file_owners:
+                del self.file_owners[file_path]
         
         # 3. Restore deleted default files from this directory
         for filename, full_path in default_files:
@@ -1466,6 +1594,9 @@ class VirtualFileSystem:
             # Remove permissions if set
             if file_path in self.file_permissions:
                 del self.file_permissions[file_path]
+            # Remove ownership if set
+            if file_path in self.file_owners:
+                del self.file_owners[file_path]
         
         # 5. Remove user-created directories in this directory
         dirs_to_remove = []
@@ -1480,8 +1611,8 @@ class VirtualFileSystem:
             if dir_path_no_slash in self.file_permissions:
                 del self.file_permissions[dir_path_no_slash]
         
-        # 6. Remove permissions for files that were removed from user_created_files
-        # (These were already removed above, but we need to clean up their permissions)
+        # 6. Remove permissions and ownership for files that were removed from user_created_files
+        # (These were already removed above, but we need to clean up their metadata)
         perms_to_remove = []
         for perm_path in list(self.file_permissions.keys()):
             if perm_path.startswith(dir_path + '/'):
@@ -1489,6 +1620,15 @@ class VirtualFileSystem:
         
         for perm_path in perms_to_remove:
             del self.file_permissions[perm_path]
+        
+        # Also clean up ownership
+        owners_to_remove = []
+        for owner_path in list(self.file_owners.keys()):
+            if owner_path.startswith(dir_path + '/'):
+                owners_to_remove.append(owner_path)
+        
+        for owner_path in owners_to_remove:
+            del self.file_owners[owner_path]
         
         return (True, None)
 

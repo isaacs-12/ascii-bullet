@@ -944,7 +944,12 @@ class VirtualFileSystem:
         """
         # Strip trailing slash if present (for directories)
         name = filename.rstrip('/')
-        full_path = self.get_pwd() + '/' + name
+        
+        # Handle current directory (.)
+        if name == '.' or name == '':
+            full_path = self.get_pwd()
+        else:
+            full_path = self.get_pwd() + '/' + name
         
         # Normalize double slashes at root
         full_path = full_path.replace('//', '/')
@@ -1238,11 +1243,15 @@ class VirtualFileSystem:
         if source_permissions and source_permissions != "rwxrwxrwx":
             self.file_permissions[dest_full] = source_permissions
         
-        # Preserve ownership at destination (unless it would default to current user anyway)
-        # Only preserve if source was owned by root or explicitly set
+        # Preserve ownership at destination
+        # Always preserve if source was root-owned (security: prevent privilege escalation)
+        # Also preserve if source was explicitly set in file_owners
         if source_owner:
-            # If source was root-owned or explicitly set in file_owners, preserve it
-            if source_owner != self.current_user or source_full in self.file_owners:
+            # Preserve if:
+            # 1. Source is root-owned (security requirement)
+            # 2. Source ownership was explicitly set (moved/modified file)
+            # 3. Source owner differs from current user (non-default ownership)
+            if source_owner == 'root' or source_full in self.file_owners or source_owner != self.current_user:
                 self.file_owners[dest_full] = source_owner
         
         return (True, None)

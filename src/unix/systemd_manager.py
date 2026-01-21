@@ -37,6 +37,8 @@ class SystemdManager:
         else:
             # Default enabled services
             self.enabled_services = {'blthll.service', 'network.service'}
+            # Create symlink files for default enabled services
+            self._create_default_enabled_symlinks()
     
     def get_service_state(self, service_name):
         """
@@ -320,3 +322,16 @@ class SystemdManager:
             units.append((service_name, state, enabled))
         
         return units
+    
+    def _create_default_enabled_symlinks(self):
+        """Create symlink files in /etc/systemd/system/ for default enabled services"""
+        old_pwd = self.filesystem.get_pwd()
+        self.filesystem.change_directory('/etc/systemd/system')
+        
+        for service_name in self.enabled_services:
+            # Check if symlink already exists
+            if not self.filesystem.file_exists(service_name):
+                # Create symlink file
+                self.filesystem.create_file(service_name, f"# Symlink to /usr/lib/systemd/system/{service_name}\n")
+        
+        self.filesystem.change_directory(old_pwd)

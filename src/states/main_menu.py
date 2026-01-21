@@ -1385,6 +1385,16 @@ class MainMenuState(BaseState):
                         self.add_output(f"Error opening editor: {e}")
                         self.add_output("")
         
+        elif cmd_lower == "code":
+            # Open VSCode-like editor
+            try:
+                from src.states.unix_utils.vscode_editor import VSCodeEditorState
+                editor = VSCodeEditorState(self.game, self.filesystem, self)
+                self.game.change_state(editor)
+            except Exception as e:
+                self.add_output(f"Error opening editor: {e}")
+                self.add_output("")
+        
         elif cmd_lower.startswith("python ") or cmd_lower.startswith("run "):
             # Execute Python script
             filename = command.split(None, 1)[1].strip() if len(command.split(None, 1)) > 1 else ""

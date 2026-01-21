@@ -63,6 +63,7 @@ def get_help_text():
       "  pwd            - Print working directory",
       "  cat <file>     - Display file contents (TAB to complete)",
       "  vim <file>     - Edit file (or 'vi' or 'edit')",
+      "  code           - Open VSCode-like editor with sidebar",
       "  touch <file>   - Create empty file",
         "  mkdir <dir>    - Create directory",
         "  rm <file>      - Delete file",

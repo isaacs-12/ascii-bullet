@@ -337,7 +337,7 @@ class VirtualFileSystem:
                 'hello_world.py': self._make_file('hello_world.py', [
                     "# Simple test script",
                     "print('Hello, World!')",
-                ], permissions='rw-------')  # Read-write for user only
+                ], permissions='rwx------')  # Read-write for user only
             }
         )
         

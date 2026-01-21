@@ -17,7 +17,7 @@ class Game:
         self.save_system = SaveSystem()
         
         # Create terminal renderer
-        self.renderer = TerminalRenderer(width=80, height=75, cell_size=12)
+        self.renderer = TerminalRenderer(width=160, height=75, cell_size=14)
         
         # Game state
         self.running = True

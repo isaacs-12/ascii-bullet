@@ -69,6 +69,78 @@ def _check_set(filesystem):
     return False
 
 
+def _check_dependency_puzzle(filesystem):
+    """
+    Check if the dependency puzzle is solved:
+    1. systemctl is available (moved to /bin/systemctl and executable)
+    2. Override directory exists: /etc/systemd/system/cooler.service.d/
+    3. Override file exists: /etc/systemd/system/cooler.service.d/override.conf
+    4. Override file contains Conflicts=laser.service
+    """
+    # 1. Check if systemctl is available (moved to /bin/systemctl and executable)
+    saved = filesystem.current_path[:]
+    try:
+        filesystem.change_directory('/bin')
+        if not filesystem.file_exists('systemctl'):
+            return False
+        # Check if executable
+        perms = filesystem.get_permissions('systemctl')
+        if not perms or 'x' not in perms[:3]:  # Check user execute permission
+            return False
+    finally:
+        filesystem.current_path = saved
+    
+    # 2. Check if override directory exists
+    override_dir = "/etc/systemd/system/cooler.service.d"
+    saved = filesystem.current_path[:]
+    try:
+        # Try to navigate to the override directory
+        success, error = filesystem.change_directory(override_dir)
+        if not success:
+            return False
+        # If we can cd into it, it exists
+        filesystem.current_path = saved
+    except:
+        filesystem.current_path = saved
+        return False
+    
+    # 3. Check if override file exists and contains Conflicts=laser.service
+    override_file = "/etc/systemd/system/cooler.service.d/override.conf"
+    saved = filesystem.current_path[:]
+    try:
+        filesystem.change_directory('/etc/systemd/system/cooler.service.d')
+        if not filesystem.file_exists('override.conf'):
+            return False
+        
+        # Read the file and check for Conflicts=laser.service
+        success, content = filesystem.read_file('override.conf')
+        if not success:
+            return False
+        
+        # Check content (handle both list and string formats)
+        if isinstance(content, list):
+            content_str = '\n'.join(str(line) for line in content)
+        else:
+            content_str = str(content)
+        
+        # Check if it contains Conflicts=laser.service (case-insensitive, allow spaces)
+        content_lower = content_str.lower()
+        if 'conflicts' in content_lower and 'laser.service' in content_lower:
+            # More specific check: Conflicts=laser.service or Conflicts = laser.service
+            lines = content_str.split('\n')
+            for line in lines:
+                line_stripped = line.strip()
+                if line_stripped.startswith('#') or not line_stripped:
+                    continue
+                # Check for Conflicts=laser.service pattern
+                if 'conflicts' in line_stripped.lower() and 'laser.service' in line_stripped.lower():
+                    return True
+    finally:
+        filesystem.current_path = saved
+    
+    return False
+
+
 # Registry: id -> { unlocks, trigger_on, check }
 PUZZLES = [
     {
@@ -85,12 +157,20 @@ PUZZLES = [
         "check": _check_set,
         "message": "Set card game unlocked! You can now run 'start set'.",
     },
+    {
+        "id": "dependency",
+        "unlocks": "asteroids",
+        "trigger_on": ["systemctl"],
+        "check": _check_dependency_puzzle,
+        "message": "Asteroids unlocked! You've mastered systemd dependencies. You can now run 'start asteroids'.",
+    },
 ]
 
 # Help line for each unlockable game (shown in help when unlocked)
 UNLOCKABLE_HELP = {
     "minesweeper": "  start minesweeper - Launch Minesweeper",
     "set": "  start set   - Set card game",
+    "asteroids": "  start asteroids - Launch Asteroids",
 }
 
 

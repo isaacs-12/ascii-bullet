@@ -76,7 +76,8 @@ class SystemdManager:
     
     def start_service(self, service_name):
         """
-        Start a service
+        Start a service with dependency and conflict checking.
+        Implements puzzle logic: checks Requires, Conflicts, and handles deadlock scenarios.
         
         Args:
             service_name: Name of the service
@@ -96,7 +97,56 @@ class SystemdManager:
         if current_state == 'active':
             return (True, f"{service_name} is already active.")
         
-        # Start the service
+        # Get effective config (base + drop-in overrides)
+        content = self._get_unit_file_content(service_name)
+        deps = self._parse_dependencies(content)
+        
+        # 1. CHECK REQUIREMENTS FIRST
+        # Start required services before checking conflicts
+        for req_service in deps.get('Requires', []):
+            req_state = self.get_service_state(req_service)
+            if req_state != 'active':
+                # Try to start the required service first
+                req_success, req_msg = self.start_service(req_service)
+                if not req_success:
+                    return (False, f"Dependency failed: {req_service} is not active. {req_msg}")
+        
+        # 2. CHECK REVERSE CONFLICTS (The Boss Weakness - Puzzle Logic)
+        # Check if any required services conflict with this service
+        # This is the key: cooler has Conflicts=laser.service (from override)
+        # So when laser tries to start, cooler must be stopped
+        # But laser requires cooler, creating a deadlock
+        for req_service in deps.get('Requires', []):
+            # Get the required service's config (including overrides)
+            req_content = self._get_unit_file_content(req_service)
+            req_deps = self._parse_dependencies(req_content)
+            # Check if the required service conflicts with us
+            if service_name in req_deps.get('Conflicts', []):
+                # The required service conflicts with us!
+                # This creates a deadlock: we require it, but it conflicts with us
+                # PUZZLE: Special case for laser + cooler
+                if service_name == "laser.service" and req_service == "cooler.service":
+                    # Stop cooler (it conflicts with laser)
+                    self.stop_service(req_service)
+                    # Now laser requires cooler, but cooler is stopped = deadlock!
+                    return (False, "CRITICAL ERROR: OVERHEAT DETECTED. Laser firing canceled. Boss Vulnerable!")
+        
+        # 3. CHECK CONFLICTS (this service conflicts with others)
+        # Check if this service conflicts with others (we would stop them)
+        for conflict_service in deps.get('Conflicts', []):
+            conflict_state = self.get_service_state(conflict_service)
+            if conflict_state == 'active':
+                # Standard systemd behavior: Stop the conflicting service
+                self.stop_service(conflict_service)
+        
+        # 4. Re-check requirements after conflict resolution
+        # (In case a required service was stopped due to conflicts)
+        for req_service in deps.get('Requires', []):
+            req_state = self.get_service_state(req_service)
+            if req_state != 'active':
+                return (False, f"Dependency failed: {req_service} is not active.")
+        
+        # 5. Start the service
         self.set_service_state(service_name, 'active')
         return (True, f"{service_name} started successfully.")
     
@@ -113,6 +163,10 @@ class SystemdManager:
         # Normalize service name
         if not service_name.endswith('.service'):
             service_name = service_name + '.service'
+        
+        # Puzzle: shield.service is "masked" and cannot be stopped
+        if service_name == "shield.service":
+            return (False, f"Failed to stop {service_name}: Unit {service_name} is masked by 'System Integrity Protection'.\nAction forbidden by PID 1.")
         
         current_state = self.get_service_state(service_name)
         if current_state == 'inactive':
@@ -230,6 +284,39 @@ class SystemdManager:
         
         return service_name in self.enabled_services
     
+    def _resolve_unit_path(self, service_name):
+        """
+        Find the path to a unit file, checking in priority order
+        
+        Args:
+            service_name: Name of the service
+            
+        Returns:
+            str: Full path to unit file, or None if not found
+        """
+        old_pwd = self.filesystem.get_pwd()
+        
+        # Check /run/systemd/system/ first (runtime, highest priority)
+        self.filesystem.change_directory('/run/systemd/system')
+        if self.filesystem.file_exists(service_name):
+            self.filesystem.change_directory(old_pwd)
+            return f'/run/systemd/system/{service_name}'
+        
+        # Check /etc/systemd/system/ (enabled services, second priority)
+        self.filesystem.change_directory('/etc/systemd/system')
+        if self.filesystem.file_exists(service_name):
+            self.filesystem.change_directory(old_pwd)
+            return f'/etc/systemd/system/{service_name}'
+        
+        # Check /usr/lib/systemd/system/ (installed, lowest priority)
+        self.filesystem.change_directory('/usr/lib/systemd/system')
+        if self.filesystem.file_exists(service_name):
+            self.filesystem.change_directory(old_pwd)
+            return f'/usr/lib/systemd/system/{service_name}'
+        
+        self.filesystem.change_directory(old_pwd)
+        return None
+    
     def _unit_file_exists(self, service_name):
         """
         Check if a unit file exists in any of the systemd directories
@@ -240,27 +327,115 @@ class SystemdManager:
         Returns:
             bool: True if unit file exists
         """
-        # Check /run/systemd/system/ first (runtime, highest priority)
+        return self._resolve_unit_path(service_name) is not None
+    
+    def _get_unit_file_content(self, service_name):
+        """
+        Retrieves the effective configuration of a unit, merging base file with drop-in overrides.
+        This implements the drop-in override mechanism: Base file + /etc/systemd/system/[service].d/*.conf
+        
+        Args:
+            service_name: Name of the service
+            
+        Returns:
+            str: Merged unit file content
+        """
+        # 1. Read Base File
+        base_path = self._resolve_unit_path(service_name)
+        base_content = ""
+        
+        if base_path:
+            old_pwd = self.filesystem.get_pwd()
+            # Navigate to the directory containing the file
+            path_parts = base_path.split('/')
+            filename = path_parts[-1]
+            dir_path = '/' + '/'.join(path_parts[:-1])
+            
+            self.filesystem.change_directory(dir_path)
+            success, content = self.filesystem.read_file(filename)
+            if success:
+                if isinstance(content, list):
+                    base_content = '\n'.join(content)
+                else:
+                    base_content = str(content)
+            self.filesystem.change_directory(old_pwd)
+        
+        # 2. Look for Drop-in Overrides (e.g., /etc/systemd/system/laser.service.d/*.conf)
+        override_dir = f"/etc/systemd/system/{service_name}.d"
+        overrides = []
+        
         old_pwd = self.filesystem.get_pwd()
-        
-        # Check /run/systemd/system/
-        self.filesystem.change_directory('/run/systemd/system')
-        if self.filesystem.file_exists(service_name):
-            self.filesystem.change_directory(old_pwd)
-            return True
-        
-        # Check /etc/systemd/system/ (enabled services, second priority)
-        self.filesystem.change_directory('/etc/systemd/system')
-        if self.filesystem.file_exists(service_name):
-            self.filesystem.change_directory(old_pwd)
-            return True
-        
-        # Check /usr/lib/systemd/system/ (installed, lowest priority)
-        self.filesystem.change_directory('/usr/lib/systemd/system')
-        exists = self.filesystem.file_exists(service_name)
+        # Check if override directory exists by trying to navigate to it
+        success, error = self.filesystem.change_directory(override_dir)
+        if success:
+            # Directory exists, list files in it
+            override_files = self.filesystem.list_directory(show_hidden=True)
+            for f in sorted(override_files):
+                if f.endswith('.conf') and not f.endswith('/'):
+                    success, content = self.filesystem.read_file(f)
+                    if success:
+                        if isinstance(content, list):
+                            overrides.append('\n'.join(str(line) for line in content))
+                        else:
+                            overrides.append(str(content))
+        # Restore original directory
         self.filesystem.change_directory(old_pwd)
         
-        return exists
+        # Merge: base content + overrides
+        if overrides:
+            return base_content + '\n' + '\n'.join(overrides)
+        return base_content
+    
+    def _parse_dependencies(self, content):
+        """
+        Simple parser to extract Requires, Conflicts, Before, and After lines from unit file content.
+        
+        Args:
+            content: Unit file content as string
+            
+        Returns:
+            dict: Dictionary with keys 'Requires', 'Conflicts', 'Before', 'After', each containing a list of service names
+        """
+        deps = {'Requires': [], 'Conflicts': [], 'Before': [], 'After': []}
+        
+        if not content:
+            return deps
+        
+        current_section = None
+        for line in content.splitlines():
+            line = line.strip()
+            
+            # Track section headers
+            if line.startswith('[') and line.endswith(']'):
+                current_section = line[1:-1]
+                continue
+            
+            # Only parse [Unit] section for dependencies
+            if current_section != 'Unit':
+                continue
+            
+            # Skip comments and empty lines
+            if not line or line.startswith('#'):
+                continue
+            
+            # Parse key=value pairs
+            if '=' in line:
+                key, val = line.split('=', 1)
+                key = key.strip()
+                val = val.strip()
+                
+                if key in deps:
+                    # Handle space-separated lists (systemd allows multiple services)
+                    services = [s.strip() for s in val.split() if s.strip()]
+                    # Normalize service names (add .service if missing)
+                    normalized = []
+                    for svc in services:
+                        if not svc.endswith('.service'):
+                            svc = svc + '.service'
+                        normalized.append(svc)
+                    deps[key].extend(normalized)
+        
+        return deps
     
     def list_unit_files(self):
         """

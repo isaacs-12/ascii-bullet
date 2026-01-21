@@ -13,7 +13,8 @@ class FakeSaveSystem:
     def __init__(self):
         self.data = {
             "systemd_states": None,
-            "systemd_enabled": None
+            "systemd_enabled": None,
+            "unlocked_games": []
         }
     
     def get_systemd_states(self):
@@ -27,6 +28,15 @@ class FakeSaveSystem:
     
     def save_systemd_enabled(self, enabled):
         self.data["systemd_enabled"] = enabled
+    
+    def is_game_unlocked(self, game_key):
+        """Check if a game is unlocked"""
+        return game_key in self.data.get("unlocked_games", [])
+    
+    def unlock_game(self, game_key):
+        """Unlock a game"""
+        if game_key not in self.data["unlocked_games"]:
+            self.data["unlocked_games"].append(game_key)
 
 
 class TestSystemdDirectories(unittest.TestCase):
@@ -387,6 +397,344 @@ class TestSystemdPersistence(unittest.TestCase):
         # Check that enabled state was restored
         self.assertTrue(manager2.is_enabled('sshd.service'),
                        "Enabled state should be restored from save")
+
+
+class TestDependencyPuzzle(unittest.TestCase):
+    """Test the complete dependency puzzle solution flow"""
+    
+    def setUp(self):
+        """Set up test fixtures"""
+        self.filesystem = VirtualFileSystem()
+        self.save_system = FakeSaveSystem()
+        self.manager = SystemdManager(self.filesystem, self.save_system)
+    
+    def test_stage1_systemctl_not_available_initially(self):
+        """Stage 1: Verify systemctl is not available initially"""
+        # Check that /bin/systemctl doesn't exist
+        self.filesystem.change_directory('/bin')
+        self.assertFalse(self.filesystem.file_exists('systemctl'),
+                        "systemctl should not exist in /bin initially")
+        
+        # Check that broken systemctl exists in deprecated location
+        self.filesystem.change_directory('/usr/local/deprecated')
+        self.assertTrue(self.filesystem.file_exists('sys_control.py'),
+                       "Broken systemctl should exist in /usr/local/deprecated/")
+    
+    def test_stage1_boot_log_exists(self):
+        """Stage 1: Verify boot.log exists with error messages"""
+        self.filesystem.change_directory('/var/log')
+        self.assertTrue(self.filesystem.file_exists('boot.log'),
+                       "boot.log should exist")
+        
+        success, content = self.filesystem.read_file('boot.log')
+        self.assertTrue(success, "Should be able to read boot.log")
+        content_str = '\n'.join(content) if isinstance(content, list) else str(content)
+        self.assertIn('laser.service', content_str,
+                     "boot.log should mention laser.service")
+        self.assertIn('systemctl status', content_str,
+                     "boot.log should mention systemctl status")
+    
+    def test_stage1_fix_systemctl(self):
+        """Stage 1: Fix systemctl by moving and making executable"""
+        # Read the broken systemctl
+        self.filesystem.change_directory('/usr/local/deprecated')
+        success, content = self.filesystem.read_file('sys_control.py')
+        self.assertTrue(success, "Should be able to read broken systemctl")
+        
+        # Move to /bin/systemctl
+        self.filesystem.set_user('root')  # Need root to move to /bin
+        success, error = self.filesystem.move_file('sys_control.py', '/bin/systemctl')
+        self.assertTrue(success, f"Should be able to move systemctl: {error}")
+        
+        # Make it executable
+        self.filesystem.change_directory('/bin')
+        success, error = self.filesystem.set_permissions('systemctl', '755')
+        self.assertTrue(success, f"Should be able to make systemctl executable: {error}")
+        
+        # Verify it's now available
+        perms = self.filesystem.get_permissions('systemctl')
+        self.assertIn('x', perms[:3], "systemctl should be executable")
+    
+    def test_stage2_shield_service_masked(self):
+        """Stage 2: Verify shield.service cannot be stopped (masked)"""
+        success, message = self.manager.stop_service('shield.service')
+        self.assertFalse(success, "shield.service should not be stoppable")
+        self.assertIn('masked', message.lower(),
+                     "Error should mention 'masked'")
+        self.assertIn('System Integrity Protection', message,
+                     "Error should mention System Integrity Protection")
+    
+    def test_stage2_status_shows_file_path(self):
+        """Stage 2: Verify systemctl status shows unit file path"""
+        # This would be tested through the main_menu integration, but we can verify
+        # that the manager can resolve the path
+        path = self.manager._resolve_unit_path('shield.service')
+        self.assertIsNotNone(path, "Should be able to resolve shield.service path")
+        self.assertIn('shield.service', path)
+        self.assertIn('/usr/lib/systemd/system/', path)
+    
+    def test_stage3_admin_notes_exist(self):
+        """Stage 3: Verify admin notes file exists with override instructions"""
+        self.filesystem.change_directory('/home/pilot/blthll/data/secret')
+        self.assertTrue(self.filesystem.file_exists('admin_notes.txt'),
+                       "admin_notes.txt should exist")
+        
+        success, content = self.filesystem.read_file('admin_notes.txt')
+        self.assertTrue(success, "Should be able to read admin_notes.txt")
+        content_str = '\n'.join(content) if isinstance(content, list) else str(content)
+        self.assertIn('.d', content_str,
+                     "admin_notes.txt should mention .d directories")
+        self.assertIn('override', content_str.lower(),
+                     "admin_notes.txt should mention overrides")
+    
+    def test_stage4_create_override_directory(self):
+        """Stage 4: Create override directory"""
+        self.filesystem.set_user('root')  # Need root to create in /etc/systemd/system/
+        self.filesystem.change_directory('/etc/systemd/system')
+        
+        success, error = self.filesystem.create_directory('cooler.service.d')
+        self.assertTrue(success, f"Should be able to create override directory: {error}")
+        
+        # Verify directory exists by trying to cd into it
+        old_pwd = self.filesystem.get_pwd()
+        success, error = self.filesystem.change_directory('cooler.service.d')
+        self.assertTrue(success, f"Should be able to cd into override directory: {error}")
+        self.filesystem.change_directory(old_pwd)
+    
+    def test_stage4_create_override_file(self):
+        """Stage 4: Create override file with Conflicts=laser.service"""
+        self.filesystem.set_user('root')
+        self.filesystem.change_directory('/etc/systemd/system')
+        
+        # Create directory first
+        self.filesystem.create_directory('cooler.service.d')
+        
+        # Create override file
+        self.filesystem.change_directory('cooler.service.d')
+        override_content = [
+            "[Unit]",
+            "Conflicts=laser.service"
+        ]
+        success, error = self.filesystem.create_file('override.conf', override_content)
+        self.assertTrue(success, f"Should be able to create override file: {error}")
+        
+        # Verify file exists and has correct content
+        self.assertTrue(self.filesystem.file_exists('override.conf'),
+                       "override.conf should exist")
+        success, content = self.filesystem.read_file('override.conf')
+        self.assertTrue(success)
+        content_str = '\n'.join(content) if isinstance(content, list) else str(content)
+        self.assertIn('Conflicts=laser.service', content_str,
+                     "Override file should contain Conflicts=laser.service")
+    
+    def test_stage4_drop_in_override_parsing(self):
+        """Stage 4: Verify drop-in overrides are parsed correctly"""
+        # Set up override
+        self.filesystem.set_user('root')
+        self.filesystem.change_directory('/etc/systemd/system')
+        self.filesystem.create_directory('cooler.service.d')
+        self.filesystem.change_directory('cooler.service.d')
+        override_content = [
+            "[Unit]",
+            "Conflicts=laser.service"
+        ]
+        success, error = self.filesystem.create_file('override.conf', override_content)
+        self.assertTrue(success, f"Should be able to create override file: {error}")
+        
+        # Verify file exists before trying to get merged content
+        self.assertTrue(self.filesystem.file_exists('override.conf'),
+                       "override.conf should exist in current directory")
+        
+        # Reset to a known directory before calling manager
+        self.filesystem.change_directory('/home/pilot/blthll')
+        
+        # Get merged content
+        content = self.manager._get_unit_file_content('cooler.service')
+        # The merged content should include the override
+        self.assertIn('Conflicts=laser.service', content,
+                     "Merged content should include override Conflicts")
+        
+        # Parse dependencies
+        deps = self.manager._parse_dependencies(content)
+        self.assertIn('laser.service', deps.get('Conflicts', []),
+                     "Parsed dependencies should include laser.service in Conflicts")
+    
+    def test_stage4_laser_start_triggers_deadlock(self):
+        """Stage 4: Verify starting laser.service triggers deadlock"""
+        # Create override first (before starting cooler)
+        self.filesystem.set_user('root')
+        self.filesystem.change_directory('/etc/systemd/system')
+        self.filesystem.create_directory('cooler.service.d')
+        self.filesystem.change_directory('cooler.service.d')
+        self.filesystem.create_file('override.conf', [
+            "[Unit]",
+            "Conflicts=laser.service"
+        ])
+        
+        # Start cooler first (laser requires it)
+        self.manager.set_service_state('cooler.service', 'active')
+        
+        # Try to start laser (requires cooler, but cooler conflicts with laser)
+        # Laser will start cooler (requirement), but then cooler conflicts with laser
+        # So cooler gets stopped, but laser requires cooler = deadlock
+        success, message = self.manager.start_service('laser.service')
+        self.assertFalse(success, "laser.service should fail to start")
+        self.assertIn('OVERHEAT DETECTED', message,
+                     "Error message should mention OVERHEAT DETECTED")
+        self.assertIn('Boss Vulnerable', message,
+                     "Error message should mention Boss Vulnerable")
+    
+    def test_puzzle_check_requires_systemctl_fixed(self):
+        """Verify puzzle check requires systemctl to be fixed"""
+        from src.core.puzzle_system import _check_dependency_puzzle
+        
+        # Without systemctl fixed, puzzle should not be solved
+        result = _check_dependency_puzzle(self.filesystem)
+        self.assertFalse(result, "Puzzle should not be solved without systemctl fixed")
+    
+    def test_puzzle_check_requires_override_directory(self):
+        """Verify puzzle check requires override directory"""
+        from src.core.puzzle_system import _check_dependency_puzzle
+        
+        # Fix systemctl first
+        self.filesystem.set_user('root')
+        self.filesystem.change_directory('/usr/local/deprecated')
+        self.filesystem.move_file('sys_control.py', '/bin/systemctl')
+        self.filesystem.change_directory('/bin')
+        self.filesystem.set_permissions('systemctl', '755')
+        
+        # Without override directory, puzzle should not be solved
+        result = _check_dependency_puzzle(self.filesystem)
+        self.assertFalse(result, "Puzzle should not be solved without override directory")
+    
+    def test_puzzle_check_requires_override_file(self):
+        """Verify puzzle check requires override file"""
+        from src.core.puzzle_system import _check_dependency_puzzle
+        
+        # Fix systemctl
+        self.filesystem.set_user('root')
+        self.filesystem.change_directory('/usr/local/deprecated')
+        self.filesystem.move_file('sys_control.py', '/bin/systemctl')
+        self.filesystem.change_directory('/bin')
+        self.filesystem.set_permissions('systemctl', '755')
+        
+        # Create override directory but no file
+        self.filesystem.change_directory('/etc/systemd/system')
+        self.filesystem.create_directory('cooler.service.d')
+        
+        # Without override file, puzzle should not be solved
+        result = _check_dependency_puzzle(self.filesystem)
+        self.assertFalse(result, "Puzzle should not be solved without override file")
+    
+    def test_puzzle_check_requires_correct_override_content(self):
+        """Verify puzzle check requires Conflicts=laser.service in override"""
+        from src.core.puzzle_system import _check_dependency_puzzle
+        
+        # Fix systemctl
+        self.filesystem.set_user('root')
+        self.filesystem.change_directory('/usr/local/deprecated')
+        self.filesystem.move_file('sys_control.py', '/bin/systemctl')
+        self.filesystem.change_directory('/bin')
+        self.filesystem.set_permissions('systemctl', '755')
+        
+        # Create override directory and file with wrong content
+        self.filesystem.change_directory('/etc/systemd/system')
+        self.filesystem.create_directory('cooler.service.d')
+        self.filesystem.change_directory('cooler.service.d')
+        self.filesystem.create_file('override.conf', [
+            "[Unit]",
+            "Requires=laser.service"  # Wrong - should be Conflicts
+        ])
+        
+        # With wrong content, puzzle should not be solved
+        result = _check_dependency_puzzle(self.filesystem)
+        self.assertFalse(result, "Puzzle should not be solved with wrong override content")
+    
+    def test_puzzle_check_succeeds_when_all_conditions_met(self):
+        """Verify puzzle check succeeds when all conditions are met"""
+        from src.core.puzzle_system import _check_dependency_puzzle
+        
+        # 1. Fix systemctl
+        self.filesystem.set_user('root')
+        self.filesystem.change_directory('/usr/local/deprecated')
+        self.filesystem.move_file('sys_control.py', '/bin/systemctl')
+        self.filesystem.change_directory('/bin')
+        self.filesystem.set_permissions('systemctl', '755')
+        
+        # 2. Create override directory
+        self.filesystem.change_directory('/etc/systemd/system')
+        self.filesystem.create_directory('cooler.service.d')
+        
+        # 3. Create override file with Conflicts=laser.service
+        self.filesystem.change_directory('cooler.service.d')
+        self.filesystem.create_file('override.conf', [
+            "[Unit]",
+            "Conflicts=laser.service"
+        ])
+        
+        # Puzzle should be solved
+        result = _check_dependency_puzzle(self.filesystem)
+        self.assertTrue(result, "Puzzle should be solved when all conditions are met")
+    
+    def test_puzzle_unlocks_asteroids(self):
+        """Verify solving the puzzle unlocks asteroids game"""
+        from src.core.puzzle_system import check_puzzles
+        
+        # Set up complete solution
+        self.filesystem.set_user('root')
+        self.filesystem.change_directory('/usr/local/deprecated')
+        self.filesystem.move_file('sys_control.py', '/bin/systemctl')
+        self.filesystem.change_directory('/bin')
+        self.filesystem.set_permissions('systemctl', '755')
+        
+        self.filesystem.change_directory('/etc/systemd/system')
+        self.filesystem.create_directory('cooler.service.d')
+        self.filesystem.change_directory('cooler.service.d')
+        self.filesystem.create_file('override.conf', [
+            "[Unit]",
+            "Conflicts=laser.service"
+        ])
+        
+        # Check puzzle (triggered by systemctl command)
+        newly_unlocked = check_puzzles(self.filesystem, self.save_system, "systemctl")
+        
+        # Should unlock asteroids
+        self.assertEqual(len(newly_unlocked), 1, "Should unlock one game")
+        game_key, message = newly_unlocked[0]
+        self.assertEqual(game_key, "asteroids", "Should unlock asteroids")
+        self.assertIn("asteroids", message.lower(), "Message should mention asteroids")
+        
+        # Verify game is unlocked in save system
+        self.assertTrue(self.save_system.is_game_unlocked("asteroids"),
+                       "Asteroids should be unlocked in save system")
+    
+    def test_puzzle_does_not_unlock_if_already_unlocked(self):
+        """Verify puzzle doesn't unlock again if already unlocked"""
+        from src.core.puzzle_system import check_puzzles
+        
+        # Pre-unlock asteroids
+        self.save_system.unlock_game("asteroids")
+        
+        # Set up complete solution
+        self.filesystem.set_user('root')
+        self.filesystem.change_directory('/usr/local/deprecated')
+        self.filesystem.move_file('sys_control.py', '/bin/systemctl')
+        self.filesystem.change_directory('/bin')
+        self.filesystem.set_permissions('systemctl', '755')
+        
+        self.filesystem.change_directory('/etc/systemd/system')
+        self.filesystem.create_directory('cooler.service.d')
+        self.filesystem.change_directory('cooler.service.d')
+        self.filesystem.create_file('override.conf', [
+            "[Unit]",
+            "Conflicts=laser.service"
+        ])
+        
+        # Check puzzle
+        newly_unlocked = check_puzzles(self.filesystem, self.save_system, "systemctl")
+        
+        # Should not unlock again
+        self.assertEqual(len(newly_unlocked), 0, "Should not unlock if already unlocked")
 
 
 if __name__ == '__main__':

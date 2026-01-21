@@ -124,6 +124,15 @@ class VirtualFileSystem:
             '/usr/lib/systemd/system/blthll.service': 'root',
             '/usr/lib/systemd/system/network.service': 'root',
             '/usr/lib/systemd/system/sshd.service': 'root',
+            '/usr/lib/systemd/system/laser.service': 'root',
+            '/usr/lib/systemd/system/shield.service': 'root',
+            '/usr/lib/systemd/system/cooler.service': 'root',
+            # System directories
+            '/var': 'root',
+            '/var/log': 'root',
+            '/bin': 'root',
+            '/usr/local': 'root',
+            '/usr/local/deprecated': 'root',
             '/run': 'root',
             '/run/systemd': 'root',
             '/run/systemd/system': 'root',
@@ -247,7 +256,17 @@ class VirtualFileSystem:
             ]),
             'developer_notes.txt': self._make_file('developer_notes.txt', [
                 "TODO: System running slow after installing some packages -- figure out why..."
-            ])
+            ]),
+            'admin_notes.txt': self._make_file('admin_notes.txt', [
+                    "ADMIN NOTES",
+                    "===========",
+                    "",
+                    "I tried to edit the laser service to lower the power, but I don't have",
+                    "write access to /usr/lib/systemd/system/.",
+                    "",
+                    "I heard you can override settings by making",
+                    "a directory ending in .d.",
+                ]),
         })
         
         data_dir = self._make_dir('data', 
@@ -424,8 +443,64 @@ class VirtualFileSystem:
                     "",
                     "[Install]",
                     "WantedBy=multi-user.target"
-                ], permissions='rw-r--r--')  # Readable by all, writable by owner (root)
+                ], permissions='rw-r--r--'),  # Readable by all, writable by owner (root)
+                # Boss puzzle services
+                'laser.service': self._make_file('laser.service', [
+                    "[Unit]",
+                    "Description=Doomsday Device",
+                    "Requires=cooler.service",
+                    "After=cooler.service",
+                    "",
+                    "[Service]",
+                    "Type=oneshot",
+                    "ExecStart=/bin/true",
+                    "",
+                    "[Install]",
+                    "WantedBy=multi-user.target"
+                ], permissions='rw-r--r--'),
+                'shield.service': self._make_file('shield.service', [
+                    "[Unit]",
+                    "Description=Defensive Barrier",
+                    "Conflicts=laser.service",
+                    "",
+                    "[Service]",
+                    "Type=oneshot",
+                    "ExecStart=/bin/true",
+                    "",
+                    "[Install]",
+                    "WantedBy=multi-user.target"
+                ], permissions='rw-r--r--'),
+                'cooler.service': self._make_file('cooler.service', [
+                    "[Unit]",
+                    "Description=Cooling System",
+                    "",
+                    "[Service]",
+                    "Type=oneshot",
+                    "ExecStart=/bin/true",
+                    "",
+                    "[Install]",
+                    "WantedBy=multi-user.target"
+                ], permissions='rw-r--r--')
             }
+        )
+        
+        # Create /usr/local/deprecated/ with broken systemctl
+        deprecated_dir = self._make_dir('deprecated',
+            files={
+                'sys_control.py': self._make_file('sys_control.py', [
+                    "#!/usr/bin/env python3",
+                    "# Broken systemctl implementation",
+                    "# This file needs to be moved to /bin/systemctl and made executable",
+                    "",
+                    "import sys",
+                    "print('systemctl: command not found')",
+                    "sys.exit(1)",
+                ], permissions='rw-r--r--')
+            }
+        )
+        
+        local_dir = self._make_dir('local',
+            dirs={'deprecated': deprecated_dir}
         )
         
         usr_dir = self._make_dir('usr',
@@ -438,9 +513,31 @@ class VirtualFileSystem:
                             }
                         )
                     }
+                ),
+                'local': local_dir
+            }
+        )
+        
+        # Create /var/log/ with boot.log
+        var_dir = self._make_dir('var',
+            dirs={
+                'log': self._make_dir('log',
+                    files={
+                        'boot.log': self._make_file('boot.log', [
+                            "[OK] Started systemd",
+                            "[OK] Started network.service",
+                            "[FAILED] Failed to start Orbital Laser.",
+                            "See 'systemctl status laser.service' for details.",
+                            "[DEPEND] Dependency failed for Cooling System.",
+                            "[OK] Started blthll.service",
+                        ], permissions='r--r--r--')  # Read-only log file
+                    }
                 )
             }
         )
+        
+        # Create /bin directory (for systemctl binary)
+        bin_dir = self._make_dir('bin', files={})
         
         # Create /run/systemd/system/ directory structure
         run_dir = self._make_dir('run',
@@ -482,6 +579,8 @@ class VirtualFileSystem:
             'etc': etc_dir,
             'usr': usr_dir,
             'run': run_dir,
+            'var': var_dir,
+            'bin': bin_dir,
             'system': system_dir
         }
     
@@ -574,6 +673,17 @@ class VirtualFileSystem:
     
     def _directory_exists(self, path_list):
         """Check if a directory path exists"""
+        # Build full path string to check user_created_dirs
+        if path_list:
+            full_path = '/' + '/'.join(path_list)
+            # Ensure trailing slash for directory comparison
+            if not full_path.endswith('/'):
+                full_path = full_path + '/'
+            # Check user-created directories first
+            if full_path in self.user_created_dirs:
+                return True
+        
+        # Check default filesystem structure
         current = self.filesystem
         for i, dir_name in enumerate(path_list):
             if i == 0:

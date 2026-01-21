@@ -1217,6 +1217,11 @@ class MainMenuState(BaseState):
             if success:
                 self.add_output(f"Created file: {filename}")
                 self._save_filesystem()
+                # Check puzzle triggers after file creation (might create override files)
+                if '/etc/systemd/system/' in filename and '.d/' in filename:
+                    for _game, msg in self._check_puzzle_triggers("systemctl"):
+                        self.add_output("")
+                        self.add_output(msg)
             else:
                 self.add_output(error)
             self.add_output("")
@@ -1228,6 +1233,11 @@ class MainMenuState(BaseState):
             if success:
                 self.add_output(f"Created directory: {dirname}/")
                 self._save_filesystem()
+                # Check puzzle triggers after directory creation (might create override directories)
+                if '/etc/systemd/system/' in dirname and '.d' in dirname:
+                    for _game, msg in self._check_puzzle_triggers("systemctl"):
+                        self.add_output("")
+                        self.add_output(msg)
             else:
                 self.add_output(error)
             self.add_output("")
@@ -1475,6 +1485,12 @@ class MainMenuState(BaseState):
                     action = "Appended to" if append else "Wrote to"
                     self.add_output(f"{action}: {filename}")
                     self._save_filesystem()
+                    # Check puzzle triggers after file write (might create override files)
+                    # Only check systemctl puzzle if writing to systemd override directory
+                    if '/etc/systemd/system/' in filename and '.d/' in filename:
+                        for _game, msg in self._check_puzzle_triggers("systemctl"):
+                            self.add_output("")
+                            self.add_output(msg)
                 else:
                     self.add_output(error)
                 self.add_output("")
@@ -1558,8 +1574,21 @@ class MainMenuState(BaseState):
                 self.add_output(f"kill: invalid process id: {command[5:].strip()}")
                 self.add_output("")
         
-        elif cmd_lower.startswith("systemctl "):
+        elif cmd_lower.startswith("systemctl ") or cmd_lower == "systemctl":
+            # Check if systemctl is "installed" (Stage 1 of puzzle)
+            if not self._is_systemctl_available():
+                self.add_output("bash: systemctl: command not found")
+                self.add_output("")
+                return
+            
             # Systemd control command
+            if cmd_lower == "systemctl":
+                self.add_output("systemctl: missing command")
+                self.add_output("Usage: systemctl <command> [service]")
+                self.add_output("Commands: status, start, stop, enable, disable, list-units, list-unit-files")
+                self.add_output("")
+                return
+            
             args = command[10:].strip().split()
             if not args:
                 self.add_output("systemctl: missing command")
@@ -1621,12 +1650,6 @@ class MainMenuState(BaseState):
                     self.add_output("Usage: systemctl <command> [service]")
                     self.add_output("Commands: status, start, stop, enable, disable, list-units, list-unit-files")
                     self.add_output("")
-        
-        elif cmd_lower == "systemctl":
-            self.add_output("systemctl: missing command")
-            self.add_output("Usage: systemctl <command> [service]")
-            self.add_output("Commands: status, start, stop, enable, disable, list-units, list-unit-files")
-            self.add_output("")
         
         elif cmd_lower in ["stat", "cat", "touch", "mkdir", "rm", "rmdir", "mv", "chmod", "vim", "vi", "edit", "emacs", "python", "run", "kill", "man", "cd"]:
             # Commands that require arguments - show usage
@@ -2124,12 +2147,17 @@ class MainMenuState(BaseState):
             self.add_output("")
             return
         
+        # Get unit file path (for puzzle clue)
+        unit_path = self.systemd_manager._resolve_unit_path(service_name)
+        
         # Format status output similar to real systemctl
         status_symbol = "●" if state == 'active' else "○"
         state_display = state.capitalize()
         enabled_display = "enabled" if enabled else "disabled"
         
         self.add_output(f"{status_symbol} {service_name} - {state_display} ({enabled_display})")
+        if unit_path:
+            self.add_output(f"   Loaded: {unit_path}")
         self.add_output("")
     
     def _systemctl_start(self, service_name):
@@ -2137,6 +2165,13 @@ class MainMenuState(BaseState):
         success, message = self.systemd_manager.start_service(service_name)
         self.add_output(message)
         self.add_output("")
+        
+        # Check puzzle triggers after systemctl start (for dependency puzzle)
+        # Save filesystem state first in case files were created
+        self._save_filesystem()
+        for _game, msg in self._check_puzzle_triggers("systemctl"):
+            self.add_output("")
+            self.add_output(msg)
     
     def _systemctl_stop(self, service_name):
         """Stop a systemd service"""
@@ -2156,6 +2191,13 @@ class MainMenuState(BaseState):
         success, message = self.systemd_manager.enable_service(service_name)
         self.add_output(message)
         self.add_output("")
+        
+        # Check puzzle triggers after systemctl enable
+        if success:
+            self._save_filesystem()
+            for _game, msg in self._check_puzzle_triggers("systemctl"):
+                self.add_output("")
+                self.add_output(msg)
     
     def _systemctl_disable(self, service_name):
         """Disable a systemd service"""
@@ -2217,6 +2259,26 @@ class MainMenuState(BaseState):
         self.add_output("")
         self.add_output(f"{len(unit_files)} unit file(s) listed.")
         self.add_output("")
+    
+    def _is_systemctl_available(self):
+        """
+        Check if systemctl is "installed" (Stage 1 puzzle check).
+        Systemctl is available if /bin/systemctl exists and is executable.
+        
+        Returns:
+            bool: True if systemctl is available, False otherwise
+        """
+        old_pwd = self.filesystem.get_pwd()
+        self.filesystem.change_directory('/bin')
+        available = self.filesystem.file_exists('systemctl')
+        if available:
+            # Check if it's executable
+            perms = self.filesystem.get_permissions('systemctl')
+            if perms and 'x' in perms[:3]:  # Check user execute permission
+                self.filesystem.change_directory(old_pwd)
+                return True
+        self.filesystem.change_directory(old_pwd)
+        return False
     
     def get_prompt(self):
         """Get the current prompt string with directory"""

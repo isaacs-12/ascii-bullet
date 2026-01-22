@@ -80,6 +80,9 @@ class VSCodeEditorState(BaseState):
         saved_history = game.save_system.get_command_history()
         self.terminal_history = saved_history.copy() if saved_history else []
         self.terminal_history_index = -1
+        
+        # Focus tracking: 'editor' or 'terminal' (None means editor when terminal closed)
+        self.focused_area = 'editor'  # Default to editor
     
     def enter(self):
         """Called when entering this state"""
@@ -485,8 +488,8 @@ class VSCodeEditorState(BaseState):
                     self.game.change_state(self.previous_state, call_enter=False)
                     return
                 
-                # Check if terminal is open and focused
-                if self.terminal_open and self._is_terminal_focused():
+                # Route keyboard input based on focused area
+                if self.terminal_open and self.focused_area == 'terminal':
                     self._handle_terminal_keydown(event)
                 else:
                     self._handle_keydown(event)
@@ -905,31 +908,39 @@ class VSCodeEditorState(BaseState):
             
             # Check if clicking in terminal area
             elif self.terminal_open and self._is_in_terminal_area(mouse_x, mouse_y):
-                # Terminal is focused when clicked
-                pass  # Focus is handled by _is_terminal_focused()
+                # Set focus to terminal
+                self.focused_area = 'terminal'
             
             # Check if clicking in editor area (below tabs, above terminal)
             elif mouse_x > self.sidebar_width + 1 and mouse_y >= 2:
                 if not self.terminal_open or mouse_y < self.renderer.char_height - self.terminal_height - 1:
+                    # Set focus to editor
+                    self.focused_area = 'editor'
                     self._handle_editor_click(mouse_x, mouse_y)
     
     def _handle_sidebar_click(self, mouse_x, mouse_y):
         """Handle clicks in the sidebar"""
-        # Check if clicking on "Toggle Terminal" button (row 0, before FILES)
+        # Check if clicking on "Toggle Terminal" button (row 0)
         if mouse_y == 0:
             self.terminal_open = not self.terminal_open
             if not self.terminal_open:
                 # Clear terminal input when closing
                 self.terminal_input_buffer = ""
+                self.focused_area = 'editor'  # Return focus to editor
+            else:
+                # When opening terminal, focus it
+                self.focused_area = 'terminal'
             return
         
-        # Account for sidebar title (row 0) and terminal button (row 0)
-        # So actual tree starts at row 1
-        click_y = mouse_y - 1
+        # Account for terminal button (row 0), separator (row 1), and FILES title (row 2)
+        # So actual tree starts at row 3
+        click_y = mouse_y - 3
         
         tree = self._get_file_tree()
         if 0 <= click_y < len(tree):
             item = tree[click_y]
+            # Clicking on sidebar sets focus to editor
+            self.focused_area = 'editor'
             if item['type'] == 'dir':
                 # Toggle expansion
                 if item['expanded']:
@@ -1054,8 +1065,8 @@ class VSCodeEditorState(BaseState):
     
     def _handle_mouse_wheel(self, event):
         """Handle mouse wheel scrolling"""
-        # Check if scrolling in terminal area
-        if self.terminal_open and self._is_terminal_focused():
+        # Check if scrolling in terminal area (and terminal is focused)
+        if self.terminal_open and self.focused_area == 'terminal':
             # Scroll terminal output
             scroll_amount = -event.y * 3
             max_scroll = max(0, len(self.terminal_output_lines) - (self.terminal_height - 1))
@@ -1085,12 +1096,16 @@ class VSCodeEditorState(BaseState):
             if self.status_message_timeout == 0:
                 self.status_message = "Code Editor | ESC to quit | Click files to open"
         
-        # Update terminal cursor blink
-        if self.terminal_open:
+        # Update terminal cursor blink (only if terminal is focused)
+        if self.terminal_open and self.focused_area == 'terminal':
             self.terminal_cursor_timer += dt
             if self.terminal_cursor_timer >= 500:  # Blink every 500ms
                 self.terminal_cursor_visible = not self.terminal_cursor_visible
                 self.terminal_cursor_timer = 0
+        elif self.terminal_open:
+            # Reset cursor visibility when not focused
+            self.terminal_cursor_visible = True
+            self.terminal_cursor_timer = 0
         
         # Handle key repeat for arrow keys
         if len(self.open_tabs) > 0:
@@ -1190,19 +1205,23 @@ class VSCodeEditorState(BaseState):
     def _render_sidebar(self):
         """Render the file tree sidebar"""
         # Toggle Terminal button (row 0)
-        terminal_text = "◄ Terminal" if self.terminal_open else "► Terminal"
+        terminal_text = "Close Terminal" if self.terminal_open else "Open Terminal"
         terminal_color = (100, 255, 100) if self.terminal_open else (150, 150, 150)
         self.renderer.write(0, 0, terminal_text[:self.sidebar_width], terminal_color)
         
-        # Sidebar title (row 1)
+        # Separator line (row 1)
+        separator = "-" * self.sidebar_width
+        self.renderer.write(0, 1, separator, (100, 100, 100))
+        
+        # Sidebar title (row 2)
         title = "FILES"
-        self.renderer.write(0, 1, title, (200, 200, 200))
+        self.renderer.write(0, 2, title, (200, 200, 200))
         
         # Get file tree
         tree = self._get_file_tree()
         
-        # Render tree items (starting at row 2)
-        start_y = 2
+        # Render tree items (starting at row 3, after terminal button, separator, and FILES title)
+        start_y = 3
         for i, item in enumerate(tree):
             y = start_y + i
             if y >= self.renderer.char_height - 1:
@@ -1335,8 +1354,8 @@ class VSCodeEditorState(BaseState):
                             color = (255, 255, 255)  # White
                         self.renderer.write(line_start_x + col, y, char, color)
                 
-                # Show cursor on current line
-                if i == self.cursor_line:
+                # Show cursor on current line (only if editor is focused)
+                if i == self.cursor_line and self.focused_area == 'editor':
                     cursor_x = line_start_x + self.cursor_col
                     if cursor_x < self.renderer.char_width:
                         # Show cursor as block
@@ -1385,7 +1404,11 @@ class VSCodeEditorState(BaseState):
         
         # Draw terminal divider (resizable handle)
         divider_y = terminal_start_y - 1
-        divider_color = (100, 200, 255) if self.terminal_drag_y is not None else (100, 100, 100)
+        # Highlight divider if terminal is focused
+        if self.focused_area == 'terminal':
+            divider_color = (100, 255, 100) if self.terminal_drag_y is not None else (150, 255, 150)
+        else:
+            divider_color = (100, 200, 255) if self.terminal_drag_y is not None else (100, 100, 100)
         for x in range(editor_start_x, self.renderer.char_width):
             self.renderer.write(x, divider_y, "=", divider_color)
         # Draw handle indicator
@@ -1424,10 +1447,12 @@ class VSCodeEditorState(BaseState):
             display_text = "…" + input_text[-(max_width-1):]
         else:
             display_text = input_text
-        self.renderer.write(editor_start_x, input_y, display_text, (255, 255, 255))
+        # Highlight input line if terminal is focused
+        input_color = (255, 255, 255) if self.focused_area == 'terminal' else (150, 150, 150)
+        self.renderer.write(editor_start_x, input_y, display_text, input_color)
         
-        # Draw cursor
-        if self.terminal_cursor_visible:
+        # Draw cursor (only if terminal is focused)
+        if self.focused_area == 'terminal' and self.terminal_cursor_visible:
             cursor_x = editor_start_x + len(prompt) + len(self.terminal_input_buffer)
             if cursor_x < self.renderer.char_width:
                 self.renderer.write(cursor_x, input_y, "█", (255, 255, 0))
@@ -1460,9 +1485,7 @@ class VSCodeEditorState(BaseState):
     
     def _is_terminal_focused(self):
         """Check if terminal is currently focused (for input)"""
-        # Terminal is focused when it's open (simple implementation)
-        # Could be enhanced to check mouse position
-        return self.terminal_open
+        return self.terminal_open and self.focused_area == 'terminal'
     
     def _is_terminal_divider_y(self, mouse_y):
         """Check if mouse_y is on the terminal divider"""

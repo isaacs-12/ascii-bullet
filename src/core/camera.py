@@ -21,49 +21,55 @@ class Camera:
         self.map_width = map_width
         self.map_height = map_height
         
-        # Camera position (top-left corner of viewport in world space)
-        self.x = 0
-        self.y = 0
+        # Camera position (top-left corner of viewport in world space, fractional for smoothness)
+        self.x = 0.0
+        self.y = 0.0
     
     def update(self, player_x, player_y):
         """
         Update camera position to follow player
         
         Args:
-            player_x: Player X position in world coordinates
-            player_y: Player Y position in world coordinates
+            player_x: Player X position in world coordinates (can be fractional)
+            player_y: Player Y position in world coordinates (can be fractional)
         """
-        # Try to center player in viewport
-        target_x = player_x - self.viewport_width // 2
-        target_y = player_y - self.viewport_height // 2
+        # Try to center player in viewport (use fractional positions)
+        target_x = player_x - self.viewport_width / 2.0
+        target_y = player_y - self.viewport_height / 2.0
         
         # Clamp camera to map boundaries
-        self.x = max(0, min(target_x, self.map_width - self.viewport_width))
-        self.y = max(0, min(target_y, self.map_height - self.viewport_height))
+        self.x = max(0.0, min(target_x, self.map_width - self.viewport_width))
+        self.y = max(0.0, min(target_y, self.map_height - self.viewport_height))
         
         # Handle case where viewport is larger than map
         if self.viewport_width >= self.map_width:
-            self.x = -(self.viewport_width - self.map_width) // 2
+            self.x = -(self.viewport_width - self.map_width) / 2.0
         if self.viewport_height >= self.map_height:
-            self.y = -(self.viewport_height - self.map_height) // 2
+            self.y = -(self.viewport_height - self.map_height) / 2.0
     
     def world_to_screen(self, world_x, world_y):
         """
         Convert world coordinates to screen coordinates
         
         Args:
-            world_x: X position in world
-            world_y: Y position in world
+            world_x: X position in world (can be fractional for sub-cell precision)
+            world_y: Y position in world (can be fractional for sub-cell precision)
             
         Returns:
             tuple: (screen_x, screen_y) or None if off-screen
         """
-        screen_x = int(world_x) - int(self.x)
-        screen_y = int(world_y) - int(self.y)
+        # Use fractional positions for smoother rendering
+        screen_x = world_x - self.x
+        screen_y = world_y - self.y
+        
+        # Round to nearest integer for character cell rendering
+        # This allows sub-cell positions to render at the nearest cell
+        screen_x_int = int(round(screen_x))
+        screen_y_int = int(round(screen_y))
         
         # Check if on screen
-        if 0 <= screen_x < self.viewport_width and 0 <= screen_y < self.viewport_height:
-            return (screen_x, screen_y)
+        if 0 <= screen_x_int < self.viewport_width and 0 <= screen_y_int < self.viewport_height:
+            return (screen_x_int, screen_y_int)
         return None
     
     def is_visible(self, world_x, world_y):

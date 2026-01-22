@@ -97,8 +97,9 @@ class GameplayState(BaseState):
         if dx != 0 or dy != 0:
             self.player.move(dx, dy, dt, self.level.width, self.level.height)
         
-        # Update camera to follow player
-        self.camera.update(self.player.x, self.player.y)
+        # Update camera to follow player (use cell coordinates)
+        player_cell_x, player_cell_y = self.player.get_cell_position()
+        self.camera.update(player_cell_x, player_cell_y)
         
         # Update level (enemies and bullets)
         self.level.update(dt, self.player)
@@ -122,15 +123,17 @@ class GameplayState(BaseState):
         # Draw map boundaries (if visible)
         self._draw_map_boundaries()
         
-        # Draw entities
+        # Draw entities (use fractional cell coordinates for smooth rendering)
         for entity in self.level.get_entities():
-            screen_pos = self.camera.world_to_screen(entity.x, entity.y)
+            ex, ey = entity.get_cell_position()
+            screen_pos = self.camera.world_to_screen(ex, ey)
             if screen_pos:
                 sx, sy = screen_pos
                 self.renderer.write(sx, sy, entity.char, entity.color)
         
-        # Draw player
-        screen_pos = self.camera.world_to_screen(self.player.x, self.player.y)
+        # Draw player (use fractional cell coordinates for smooth rendering)
+        player_cell_x, player_cell_y = self.player.get_cell_position()
+        screen_pos = self.camera.world_to_screen(player_cell_x, player_cell_y)
         if screen_pos:
             sx, sy = screen_pos
             self.renderer.write(sx, sy, self.player.char, self.player.color)
@@ -193,9 +196,11 @@ class GameplayState(BaseState):
         for bullet in self.level.bullets:
             bullet_id = id(bullet)
             
-            # Calculate distance to player
-            dx = self.player.x - bullet.x
-            dy = self.player.y - bullet.y
+            # Calculate distance to player (use cell coordinates)
+            px, py = self.player.get_cell_position()
+            bx, by = bullet.get_cell_position()
+            dx = px - bx
+            dy = py - by
             distance = (dx**2 + dy**2) ** 0.5
             
             # Check each tier from closest to farthest

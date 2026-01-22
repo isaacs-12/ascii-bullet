@@ -92,29 +92,33 @@ class Level:
         Returns:
             Enemy instance
         """
+        # Choose movement type randomly
+        movement_types = ['basic', 'erratic', 'maintain_distance', 'chase']
+        movement_type = random.choice(movement_types)
+        
         if enemy_type == 'basic':
             # Red - moderate speed and fire rate
             enemy = Enemy(x, y, char='X', color=(255, 100, 100), 
-                         bullet_speed=12.0, movement_speed=2.0)
+                         bullet_speed=12.0, movement_speed=2.0, movement_type=movement_type)
             enemy.fire_rate = 2000  # Fire every 2 seconds
             enemy.health = 20
             
         elif enemy_type == 'fast':
             # Orange - fast firing, medium bullet speed, fast movement
             enemy = Enemy(x, y, char='X', color=(255, 150, 0), 
-                         bullet_speed=10.0, movement_speed=4.0)
+                         bullet_speed=10.0, movement_speed=4.0, movement_type=movement_type)
             enemy.fire_rate = 1000  # Fire every second
             enemy.health = 15  # Less health but shoots faster
             
         elif enemy_type == 'sniper':
             # Purple - slow firing, very fast bullets, slow movement
             enemy = Enemy(x, y, char='X', color=(255, 0, 255), 
-                         bullet_speed=18.0, movement_speed=1.0)
+                         bullet_speed=18.0, movement_speed=1.0, movement_type=movement_type)
             enemy.fire_rate = 3000  # Fire every 3 seconds (but faster bullets)
             enemy.health = 10  # Low ammo, powerful shots
         
         else:
-            enemy = Enemy(x, y)
+            enemy = Enemy(x, y, movement_type=movement_type)
         
         # Apply difficulty multipliers
         enemy.fire_rate = int(enemy.fire_rate / self.config.enemy_fire_rate_multiplier)
@@ -132,10 +136,12 @@ class Level:
         """
         # Update enemies
         for enemy in self.enemies:
-            enemy.update(dt, self.width, self.height)
+            # Pass player for movement AI
+            player_cell_x, player_cell_y = player.get_cell_position()
+            enemy.update(dt, self.width, self.height, player)
             
-            # Try to fire at player
-            bullet = enemy.fire(player.x, player.y)
+            # Try to fire at player (use cell coordinates)
+            bullet = enemy.fire(player_cell_x, player_cell_y)
             if bullet:
                 self.bullets.append(bullet)
         
@@ -163,10 +169,12 @@ class Level:
         Returns:
             bool: True if player was hit
         """
+        px, py = player.get_cell_position()
         for bullet in self.bullets:
-            # Simple distance check
-            dx = player.x - bullet.x
-            dy = player.y - bullet.y
+            # Simple distance check (in cell coordinates)
+            bx, by = bullet.get_cell_position()
+            dx = px - bx
+            dy = py - by
             distance = (dx**2 + dy**2) ** 0.5
             
             if distance < player.hitbox_radius:
@@ -196,18 +204,19 @@ class Level:
         # Choose random position at edges
         edge = random.choice(['top', 'bottom', 'left', 'right'])
         
+        # Spawn at edges but within valid bounds (0 to width-1, 0 to height-1)
         if edge == 'top':
-            x = random.uniform(5, self.width - 5)
-            y = 5
+            x = random.uniform(1, self.width - 1)
+            y = 1
         elif edge == 'bottom':
-            x = random.uniform(5, self.width - 5)
-            y = self.height - 5
+            x = random.uniform(1, self.width - 1)
+            y = self.height - 1
         elif edge == 'left':
-            x = 5
-            y = random.uniform(5, self.height - 5)
+            x = 1
+            y = random.uniform(1, self.height - 1)
         else:  # right
-            x = self.width - 5
-            y = random.uniform(5, self.height - 5)
+            x = self.width - 1
+            y = random.uniform(1, self.height - 1)
         
         # Choose random enemy type
         enemy_type = random.choice(self.config.enemy_types)
@@ -229,7 +238,7 @@ LEVEL_1 = LevelConfig(
 LEVEL_1.min_enemies = 3
 LEVEL_1.max_enemies = 5
 LEVEL_1.enemy_fire_rate_multiplier = 0.8
-LEVEL_1.spawn_interval = 8000  # 8 seconds between spawns
+LEVEL_1.spawn_interval = 3000  # 3 seconds between spawns (reduced from 8 for faster difficulty ramp)
 LEVEL_1.max_active_enemies = 10
 
 LEVEL_2 = LevelConfig(

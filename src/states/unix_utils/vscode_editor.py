@@ -753,11 +753,19 @@ class VSCodeEditorState(BaseState):
         """Handle input events"""
         for event in events:
             if event.type == pygame.KEYDOWN:
-                # ESC always quits editor (regardless of terminal focus)
+                # ESC handling: close quick open modal if active, otherwise quit editor
                 if event.key == pygame.K_ESCAPE:
-                    self._save_all_files()
-                    self.game.change_state(self.previous_state, call_enter=False)
-                    return
+                    if self.quick_open_active:
+                        # Close quick open modal, return to editor
+                        self.quick_open_active = False
+                        self.quick_open_query = ""
+                        self.quick_open_results = []
+                        return
+                    else:
+                        # Quit editor
+                        self._save_all_files()
+                        self.game.change_state(self.previous_state, call_enter=False)
+                        return
                 
                 # Route keyboard input based on focused area
                 if self.terminal_open and self.focused_area == 'terminal':
@@ -1180,6 +1188,11 @@ class VSCodeEditorState(BaseState):
             
             mouse_x = event.pos[0] // self.renderer.cell_width
             mouse_y = adjusted_y // self.renderer.cell_height
+            
+            # Check if quick open modal is active - handle clicks on it first
+            if self.quick_open_active:
+                self._handle_quick_open_click(mouse_x, mouse_y)
+                return
             
             # Check if clicking on sidebar drag handle (within 1 character width)
             if abs(mouse_x - self.sidebar_width) <= 1:
@@ -2077,6 +2090,40 @@ class VSCodeEditorState(BaseState):
             # Add character to search query
             self.quick_open_query += event.unicode
             self._search_files_quick_open(self.quick_open_query)
+    
+    def _handle_quick_open_click(self, mouse_x, mouse_y):
+        """Handle mouse clicks on quick open modal"""
+        # Calculate modal bounds (same as rendering)
+        modal_width = min(60, self.renderer.char_width - 10)
+        modal_height = min(20, self.renderer.char_height - 6)
+        modal_start_x = (self.renderer.char_width - modal_width) // 2
+        modal_start_y = (self.renderer.char_height - modal_height) // 2
+        
+        # Check if click is within modal bounds
+        if not (modal_start_x <= mouse_x < modal_start_x + modal_width and
+                modal_start_y <= mouse_y < modal_start_y + modal_height):
+            # Clicked outside modal - close it
+            self.quick_open_active = False
+            self.quick_open_query = ""
+            self.quick_open_results = []
+            return
+        
+        # Check if clicking on a result (results start at row 2 of modal)
+        result_start_y = modal_start_y + 2
+        click_y = mouse_y - result_start_y
+        
+        if 0 <= click_y < len(self.quick_open_results):
+            filepath = self.quick_open_results[click_y]
+            # Skip directories
+            if not filepath.endswith('/'):
+                filename = filepath.split('/')[-1]
+                self._open_file(filepath, filename)
+                # Close modal and return to editor
+                self.quick_open_active = False
+                self.quick_open_query = ""
+                self.quick_open_results = []
+                # Focus editor
+                self.focused_area = 'editor'
     
     def _handle_terminal_keydown(self, event):
         """Handle keyboard input for terminal"""

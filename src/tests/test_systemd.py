@@ -206,19 +206,74 @@ class TestSystemdManager(unittest.TestCase):
     
     def test_stop_service(self):
         """Test stopping a service"""
-        # Stop an active service
-        success, message = self.manager.stop_service('blthll.service')
-        self.assertTrue(success, f"Should be able to stop service: {message}")
+        # Start sshd first (it's inactive by default)
+        self.manager.start_service('sshd.service')
+        
+        # Stop a non-critical service (sshd is not critical)
+        success, message = self.manager.stop_service('sshd.service')
+        self.assertTrue(success, f"Should be able to stop non-critical service: {message}")
         self.assertIn('stopped successfully', message)
         
         # Check state
-        state = self.manager.get_service_state('blthll.service')
+        state = self.manager.get_service_state('sshd.service')
         self.assertEqual(state, 'inactive', "Service should be inactive after stop")
         
         # Try to stop an already inactive service
         success, message = self.manager.stop_service('sshd.service')
         self.assertTrue(success, "Should handle already inactive service")
         self.assertIn('already inactive', message)
+    
+    def test_stop_critical_service_triggers_reset(self):
+        """Test that stopping a critical service triggers system reset"""
+        # Try to stop a critical service
+        success, message = self.manager.stop_service('blthll.service')
+        self.assertFalse(success, "Stopping critical service should fail and trigger reset")
+        self.assertIn('CRITICAL', message)
+        self.assertIn('SYSTEM FAILURE', message)
+        
+        # Check that reset was triggered
+        self.assertTrue(self.manager.was_system_reset_triggered(),
+                       "System reset should be triggered")
+        
+        # Check that critical service was restored
+        state = self.manager.get_service_state('blthll.service')
+        self.assertEqual(state, 'active', "Critical service should be restored to active")
+        
+        # Clear reset flag for other tests
+        self.manager.clear_reset_flag()
+    
+    def test_cascading_failure_triggers_reset(self):
+        """Test that stopping a critical service via conflict triggers reset"""
+        # Create a service that conflicts with network.service (critical)
+        # First, create a unit file that conflicts with network
+        self.filesystem.change_directory('/usr/lib/systemd/system')
+        self.filesystem.create_file('test-conflict.service', [
+            "[Unit]",
+            "Description=Test Conflict Service",
+            "Conflicts=network.service",
+            "",
+            "[Service]",
+            "Type=oneshot",
+            "ExecStart=/bin/true"
+        ])
+        
+        # Try to start the conflicting service
+        # This should stop network.service (critical) and trigger reset
+        success, message = self.manager.start_service('test-conflict.service')
+        self.assertFalse(success, "Starting service that conflicts with critical service should trigger reset")
+        self.assertIn('CRITICAL', message)
+        
+        # Check that reset was triggered
+        self.assertTrue(self.manager.was_system_reset_triggered(),
+                       "System reset should be triggered")
+        
+        # Check that critical service was restored
+        state = self.manager.get_service_state('network.service')
+        self.assertEqual(state, 'active', "Critical service should be restored to active")
+        
+        # Clean up
+        self.manager.clear_reset_flag()
+        self.filesystem.delete_file('test-conflict.service')
     
     def test_enable_service(self):
         """Test enabling a service"""

@@ -2158,9 +2158,20 @@ class MainMenuState(BaseState):
     
     def _systemctl_start(self, service_name):
         """Start a systemd service"""
+        # Clear any previous reset flag
+        self.systemd_manager.clear_reset_flag()
+        
         success, message = self.systemd_manager.start_service(service_name)
         self.add_output(message)
         self.add_output("")
+        
+        # Check if system reset was triggered
+        if self.systemd_manager.was_system_reset_triggered():
+            self.add_output("=" * 60)
+            self.add_output("SYSTEM RESET DETECTED")
+            self.add_output("=" * 60)
+            self.add_output("")
+            self.systemd_manager.clear_reset_flag()
         
         # Check puzzle triggers after systemctl start (for dependency puzzle)
         # Save filesystem state first in case files were created
@@ -2171,9 +2182,20 @@ class MainMenuState(BaseState):
     
     def _systemctl_stop(self, service_name):
         """Stop a systemd service"""
+        # Clear any previous reset flag
+        self.systemd_manager.clear_reset_flag()
+        
         success, message = self.systemd_manager.stop_service(service_name)
         self.add_output(message)
         self.add_output("")
+        
+        # Check if system reset was triggered
+        if self.systemd_manager.was_system_reset_triggered():
+            self.add_output("=" * 60)
+            self.add_output("SYSTEM RESET DETECTED")
+            self.add_output("=" * 60)
+            self.add_output("")
+            self.systemd_manager.clear_reset_flag()
     
     def _systemctl_enable(self, service_name):
         """Enable a systemd service"""

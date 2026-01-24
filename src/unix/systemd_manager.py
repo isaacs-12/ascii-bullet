@@ -6,6 +6,13 @@ Systemd service manager for tracking service states and unit files
 class SystemdManager:
     """Manages systemd services and unit files"""
     
+    # Critical services that must remain active for system stability
+    # If any of these are stopped, the system will reset
+    CRITICAL_SERVICES = {
+        'blthll.service',  # Main game service - system won't function without it
+        'network.service',  # Network service - critical for system operation
+    }
+    
     def __init__(self, filesystem, save_system=None):
         """
         Initialize systemd manager
@@ -39,6 +46,9 @@ class SystemdManager:
             self.enabled_services = {'blthll.service', 'network.service'}
             # Create symlink files for default enabled services
             self._create_default_enabled_symlinks()
+        
+        # Track if system reset was triggered
+        self.system_reset_triggered = False
     
     def get_service_state(self, service_name):
         """
@@ -133,20 +143,34 @@ class SystemdManager:
         
         # 3. CHECK CONFLICTS (this service conflicts with others)
         # Check if this service conflicts with others (we would stop them)
+        stopped_critical = False
         for conflict_service in deps.get('Conflicts', []):
             conflict_state = self.get_service_state(conflict_service)
             if conflict_state == 'active':
+                # Check if we're about to stop a critical service
+                if conflict_service in self.CRITICAL_SERVICES:
+                    stopped_critical = True
                 # Standard systemd behavior: Stop the conflicting service
-                self.stop_service(conflict_service)
+                stop_result = self.stop_service(conflict_service)
+                # If stopping caused a reset, propagate that
+                if not stop_result[0] and self.system_reset_triggered:
+                    return stop_result
         
         # 4. Re-check requirements after conflict resolution
         # (In case a required service was stopped due to conflicts)
         for req_service in deps.get('Requires', []):
             req_state = self.get_service_state(req_service)
             if req_state != 'active':
+                # If we stopped a critical service that was required, system is unstable
+                if stopped_critical:
+                    return self._trigger_system_reset(service_name)
                 return (False, f"Dependency failed: {req_service} is not active.")
         
-        # 5. Start the service
+        # 5. Check system stability before starting
+        if not self._check_system_stability():
+            return self._trigger_system_reset(service_name)
+        
+        # 6. Start the service
         self.set_service_state(service_name, 'active')
         return (True, f"{service_name} started successfully.")
     
@@ -172,9 +196,67 @@ class SystemdManager:
         if current_state == 'inactive':
             return (True, f"{service_name} is already inactive.")
         
+        # Guardrail: Warn heavily if trying to stop critical service
+        if service_name in self.CRITICAL_SERVICES:
+            # Check if other services depend on this critical service
+            dependent_services = self._find_dependent_services(service_name)
+            warning_msg = f"WARNING: {service_name} is a critical system service.\n"
+            if dependent_services:
+                dep_list = ', '.join(dependent_services[:3])  # Show first 3
+                if len(dependent_services) > 3:
+                    dep_list += f" and {len(dependent_services) - 3} more"
+                warning_msg += f"Active services depending on {service_name}: {dep_list}\n"
+            warning_msg += "Stopping this service may cause system instability."
+            
+            # Allow stopping but check stability after
+            self.set_service_state(service_name, 'inactive')
+            
+            # Check if system is still stable
+            if not self._check_system_stability():
+                # System is unstable - trigger reset
+                return self._trigger_system_reset(service_name)
+            
+            return (True, f"{service_name} stopped successfully.\n{warning_msg}")
+        
         # Stop the service
         self.set_service_state(service_name, 'inactive')
+        
+        # Check system stability after stopping
+        if not self._check_system_stability():
+            # System became unstable - trigger reset
+            return self._trigger_system_reset(service_name)
+        
         return (True, f"{service_name} stopped successfully.")
+    
+    def _find_dependent_services(self, service_name):
+        """
+        Find all services that require the given service.
+        
+        Args:
+            service_name: Name of the service to check
+            
+        Returns:
+            list: List of service names that depend on this service
+        """
+        dependent = []
+        
+        # Check all unit files for dependencies
+        unit_files = self.list_unit_files()
+        for unit_name, _, _ in unit_files:
+            if unit_name == service_name:
+                continue
+            
+            # Get unit content and check if it requires this service
+            content = self._get_unit_file_content(unit_name)
+            deps = self._parse_dependencies(content)
+            
+            # Check if this unit requires the service
+            if service_name in deps.get('Requires', []):
+                # Check if the dependent service is active
+                if self.get_service_state(unit_name) == 'active':
+                    dependent.append(unit_name)
+        
+        return dependent
     
     def enable_service(self, service_name):
         """
@@ -510,3 +592,86 @@ class SystemdManager:
                 self.filesystem.create_file(service_name, f"# Symlink to /usr/lib/systemd/system/{service_name}\n")
         
         self.filesystem.change_directory(old_pwd)
+    
+    def _check_system_stability(self):
+        """
+        Check if critical services are still running.
+        If any critical service is inactive, the system is unstable.
+        
+        Returns:
+            bool: True if system is stable, False if unstable
+        """
+        for critical_service in self.CRITICAL_SERVICES:
+            state = self.get_service_state(critical_service)
+            if state != 'active':
+                return False
+        return True
+    
+    def _trigger_system_reset(self, failed_service=None):
+        """
+        Trigger a system reset when critical services fail.
+        Resets all service states to defaults and restores enabled services.
+        
+        Args:
+            failed_service: Name of the service that caused the failure (for error message)
+            
+        Returns:
+            tuple: (success: bool, message: str)
+        """
+        self.system_reset_triggered = True
+        
+        # Build error message
+        if failed_service:
+            failed_msg = f"CRITICAL: {failed_service} stopped."
+        else:
+            failed_msg = "CRITICAL: System instability detected."
+        
+        # Reset service states to defaults
+        self.service_states = {
+            'blthll.service': 'active',
+            'network.service': 'active',
+            'sshd.service': 'inactive',
+        }
+        
+        # Reset enabled services
+        self.enabled_services = {'blthll.service', 'network.service'}
+        
+        # Recreate default symlinks
+        self._create_default_enabled_symlinks()
+        
+        # Save reset state
+        if self.save_system:
+            self.save_system.save_systemd_states(self.service_states)
+            self.save_system.save_systemd_enabled(list(self.enabled_services))
+        
+        # Return error message
+        message = f"*** {failed_msg} ***\n"
+        message += "\n"
+        message += "CRITICAL SYSTEM FAILURE DETECTED\n"
+        message += "==================================\n"
+        message += "One or more critical system services have been stopped.\n"
+        message += "System integrity compromised. Emergency recovery initiated.\n"
+        message += "\n"
+        message += "Emergency actions taken:\n"
+        message += "  - All service states reset to defaults\n"
+        message += "  - Critical services restored\n"
+        message += "  - System configuration reset\n"
+        message += "\n"
+        message += "WARNING: System reboot recommended to ensure stability.\n"
+        message += "Some services may need manual intervention to restore full functionality."
+        
+        return (False, message)
+    
+    def was_system_reset_triggered(self):
+        """
+        Check if a system reset was triggered in the last operation.
+        Call this after start/stop operations to check if system needs reset.
+        
+        Returns:
+            bool: True if reset was triggered
+        """
+        return self.system_reset_triggered
+    
+    def clear_reset_flag(self):
+        """Clear the system reset flag (call after handling reset)"""
+        self.system_reset_triggered = False

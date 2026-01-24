@@ -33,6 +33,20 @@ class VSCodeEditorState(BaseState):
         self.expanded_dirs = set()  # Set of expanded directory paths
         self.selected_file = None  # Currently selected file in sidebar
         
+        # Search state (for searching within files)
+        self.search_query = ""  # Current search query for content search
+        self.search_results = []  # List of (filepath, line_num, line_text) matching search
+        self.search_cursor = 0  # Currently selected search result index
+        
+        # Sidebar tab state
+        self.sidebar_tab = "files"  # "files" or "search"
+        
+        # Quick open state (Cmd+P modal)
+        self.quick_open_active = False  # Whether quick open dialog is shown
+        self.quick_open_query = ""  # Current search query for files
+        self.quick_open_results = []  # List of matching filepaths
+        self.quick_open_cursor = 0  # Currently selected result index
+        
         # Tab system
         self.open_tabs = []  # List of (filename, full_path) tuples
         self.active_tab_index = 0  # Index of currently active tab
@@ -328,9 +342,266 @@ class VSCodeEditorState(BaseState):
         
         return tree
     
+    def _search_files(self, query):
+        """Search for files matching the query in current working directory and subdirectories"""
+        if not query.strip():
+            self.search_results = []
+            return
+        
+        query_lower = query.lower()
+        results = []
+        base_path = self.filesystem.get_pwd()
+        
+        # Helper to recursively search through filesystem
+        def search_dir(dir_path, dir_node, max_depth=10, current_depth=0):
+            if current_depth > max_depth:
+                return
+            
+            # Search files
+            if 'files' in dir_node:
+                for file_name in sorted(dir_node['files'].keys()):
+                    if query_lower in file_name.lower():
+                        full_path = f"{dir_path}/{file_name}" if dir_path != "/" else f"/{file_name}"
+                        if full_path not in self.filesystem.user_deleted_files:
+                            results.append((full_path, file_name))
+            
+            # Search directories
+            if 'dirs' in dir_node:
+                for dir_name in sorted(dir_node['dirs'].keys()):
+                    full_dir_path = f"{dir_path}/{dir_name}" if dir_path != "/" else f"/{dir_name}"
+                    if query_lower in dir_name.lower():
+                        results.append((full_dir_path, f"{dir_name}/"))
+                    
+                    # Recursively search subdirectory
+                    subdir_node = dir_node['dirs'][dir_name]
+                    search_dir(full_dir_path, subdir_node, max_depth, current_depth + 1)
+            
+            # Search user-created directories
+            for user_dir in sorted(self.filesystem.user_created_dirs):
+                user_dir_clean = user_dir.rstrip("/")
+                expected_prefix = dir_path + "/" if dir_path != "/" else "/"
+                
+                if user_dir_clean.startswith(expected_prefix):
+                    remaining = user_dir_clean[len(expected_prefix):]
+                    if "/" not in remaining:  # Direct child
+                        if query_lower in remaining.lower():
+                            results.append((user_dir_clean, f"{remaining}/"))
+            
+            # Search user-created and user-modified files
+            for user_file_path in sorted(self.filesystem.user_created_files):
+                expected_prefix = dir_path + "/" if dir_path != "/" else "/"
+                
+                if user_file_path.startswith(expected_prefix):
+                    remaining = user_file_path[len(expected_prefix):]
+                    if "/" not in remaining and query_lower in remaining.lower():
+                        results.append((user_file_path, remaining))
+            
+            for user_file_path in sorted(self.filesystem.user_modified_files.keys()):
+                expected_prefix = dir_path + "/" if dir_path != "/" else "/"
+                
+                if user_file_path.startswith(expected_prefix):
+                    remaining = user_file_path[len(expected_prefix):]
+                    if "/" not in remaining and query_lower in remaining.lower():
+                        if not any(r[0] == user_file_path for r in results):
+                            results.append((user_file_path, remaining))
+        
+        # Start search from base path
+        try:
+            current_dir = self.filesystem.get_current_directory()
+            search_dir(base_path, current_dir)
+        except:
+            pass
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_results = []
+        for path, name in results:
+            if path not in seen:
+                seen.add(path)
+                unique_results.append((path, name))
+        
+        self.search_results = unique_results
+        self.search_cursor = 0
+    
+    def _toggle_search(self):
+        """Toggle between files and search tabs"""
+        if self.sidebar_tab == "files":
+            self.sidebar_tab = "search"
+            self.search_query = ""
+            self.search_results = []
+            self.search_cursor = 0
+        else:
+            self.sidebar_tab = "files"
+            self.search_query = ""
+            self.search_results = []
+    
+    def _toggle_quick_open(self):
+        """Toggle quick open modal dialog"""
+        self.quick_open_active = not self.quick_open_active
+        if self.quick_open_active:
+            self.quick_open_query = ""
+            self.quick_open_results = []
+            self.quick_open_cursor = 0
+        else:
+            self.quick_open_query = ""
+            self.quick_open_results = []
+    
+    def _search_file_content(self, query):
+        """Search for text within files in current directory"""
+        if not query.strip():
+            self.search_results = []
+            return
+        
+        query_lower = query.lower()
+        # Group results by file: {filepath: [(line_num, line_text), ...]}
+        file_results = {}
+        base_path = self.filesystem.get_pwd()
+        
+        # Helper to recursively search files in filesystem
+        def search_dir(dir_path, dir_node, max_depth=10, current_depth=0):
+            if current_depth > max_depth:
+                return
+            
+            # Search files in directory
+            if 'files' in dir_node:
+                for file_name in sorted(dir_node['files'].keys()):
+                    full_path = f"{dir_path}/{file_name}" if dir_path != "/" else f"/{file_name}"
+                    if full_path not in self.filesystem.user_deleted_files:
+                        # Try to read file content
+                        try:
+                            success, content = self.filesystem.read_file(file_name)
+                            if success:
+                                if isinstance(content, list):
+                                    lines = content
+                                else:
+                                    lines = str(content).split('\n')
+                                
+                                matches = []
+                                for line_num, line_text in enumerate(lines):
+                                    if query_lower in line_text.lower():
+                                        matches.append((line_num, line_text.strip()))
+                                
+                                if matches:
+                                    file_results[full_path] = matches
+                        except:
+                            pass
+            
+            # Recursively search subdirectories
+            if 'dirs' in dir_node:
+                for dir_name in sorted(dir_node['dirs'].keys()):
+                    full_dir_path = f"{dir_path}/{dir_name}" if dir_path != "/" else f"/{dir_name}"
+                    subdir_node = dir_node['dirs'][dir_name]
+                    # Save current directory, navigate, search, restore
+                    saved_path = self.filesystem.current_path[:]
+                    try:
+                        self.filesystem.change_directory(full_dir_path)
+                        search_dir(full_dir_path, subdir_node, max_depth, current_depth + 1)
+                    except:
+                        pass
+                    finally:
+                        self.filesystem.current_path = saved_path
+        
+        # Start search from base path
+        try:
+            saved_path = self.filesystem.current_path[:]
+            self.filesystem.change_directory(base_path)
+            current_dir = self.filesystem.get_current_directory()
+            search_dir(base_path, current_dir)
+            self.filesystem.current_path = saved_path
+        except:
+            pass
+        
+        # Convert to flat list with file headers: [('file', path), ('match', path, line_num, line_text), ...]
+        results = []
+        for filepath in sorted(file_results.keys()):
+            results.append(('file', filepath))
+            for line_num, line_text in file_results[filepath]:
+                results.append(('match', filepath, line_num, line_text))
+        
+        self.search_results = results
+        self.search_cursor = 0
+    
+    def _search_files_quick_open(self, query):
+        """Search for files by name (for quick open)"""
+        if not query.strip():
+            self.quick_open_results = []
+            return
+        
+        query_lower = query.lower()
+        results = []
+        base_path = self.filesystem.get_pwd()
+        
+        # Helper to recursively search through filesystem
+        def search_dir(dir_path, dir_node, max_depth=10, current_depth=0):
+            if current_depth > max_depth:
+                return
+            
+            # Search files
+            if 'files' in dir_node:
+                for file_name in sorted(dir_node['files'].keys()):
+                    if query_lower in file_name.lower():
+                        full_path = f"{dir_path}/{file_name}" if dir_path != "/" else f"/{file_name}"
+                        if full_path not in self.filesystem.user_deleted_files:
+                            results.append(full_path)
+            
+            # Search directories
+            if 'dirs' in dir_node:
+                for dir_name in sorted(dir_node['dirs'].keys()):
+                    full_dir_path = f"{dir_path}/{dir_name}" if dir_path != "/" else f"/{dir_name}"
+                    if query_lower in dir_name.lower():
+                        results.append(full_dir_path + "/")
+                    
+                    # Recursively search subdirectory
+                    subdir_node = dir_node['dirs'][dir_name]
+                    search_dir(full_dir_path, subdir_node, max_depth, current_depth + 1)
+            
+            # Search user-created directories
+            for user_dir in sorted(self.filesystem.user_created_dirs):
+                user_dir_clean = user_dir.rstrip("/")
+                expected_prefix = dir_path + "/" if dir_path != "/" else "/"
+                
+                if user_dir_clean.startswith(expected_prefix):
+                    remaining = user_dir_clean[len(expected_prefix):]
+                    if "/" not in remaining and query_lower in remaining.lower():
+                        results.append(user_dir_clean + "/")
+            
+            # Search user-created and user-modified files
+            for user_file_path in sorted(self.filesystem.user_created_files):
+                expected_prefix = dir_path + "/" if dir_path != "/" else "/"
+                
+                if user_file_path.startswith(expected_prefix):
+                    remaining = user_file_path[len(expected_prefix):]
+                    if "/" not in remaining and query_lower in remaining.lower():
+                        results.append(user_file_path)
+            
+            for user_file_path in sorted(self.filesystem.user_modified_files.keys()):
+                expected_prefix = dir_path + "/" if dir_path != "/" else "/"
+                
+                if user_file_path.startswith(expected_prefix):
+                    remaining = user_file_path[len(expected_prefix):]
+                    if "/" not in remaining and query_lower in remaining.lower():
+                        if not any(r == user_file_path for r in results):
+                            results.append(user_file_path)
+        
+        # Start search from base path
+        try:
+            current_dir = self.filesystem.get_current_directory()
+            search_dir(base_path, current_dir)
+        except:
+            pass
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_results = []
+        for path in results:
+            if path not in seen:
+                seen.add(path)
+                unique_results.append(path)
+        
+        self.quick_open_results = unique_results
+        self.quick_open_cursor = 0
+    
     def _open_file(self, full_path, filename):
-        """Open a file in a new tab"""
-        # Check if already open
         for i, (name, path) in enumerate(self.open_tabs):
             if path == full_path:
                 self.active_tab_index = i
@@ -509,6 +780,26 @@ class VSCodeEditorState(BaseState):
     def _handle_keydown(self, event):
         """Handle keyboard input"""
         # ESC is handled in handle_events before routing here
+        
+        # Cmd+P to toggle quick open
+        if (event.mod & pygame.KMOD_GUI) and event.key == pygame.K_p:
+            self._toggle_quick_open()
+            return
+        
+        # If quick open is active, handle its input
+        if self.quick_open_active:
+            self._handle_quick_open_keydown(event)
+            return
+        
+        # Ctrl+F or Cmd+F to toggle search
+        if (event.mod & pygame.KMOD_CTRL or event.mod & pygame.KMOD_GUI) and event.key == pygame.K_f:
+            self._toggle_search()
+            return
+        
+        # If in search tab, handle search input
+        if self.sidebar_tab == "search":
+            self._handle_search_keydown(event)
+            return
         
         # If no tabs open, ignore most keys
         if len(self.open_tabs) == 0:
@@ -932,15 +1223,34 @@ class VSCodeEditorState(BaseState):
                 self.focused_area = 'terminal'
             return
         
-        # Account for terminal button (row 0), separator (row 1), and FILES title (row 2)
+        # Check if clicking on tabs (row 2): "Files | Search"
+        if mouse_y == 2:
+            # "Files" is at x=0-4, "Search" is at x=7-12
+            if mouse_x < 6:
+                # Clicked on "Files" tab
+                self.sidebar_tab = "files"
+            else:
+                # Clicked on "Search" tab
+                self.sidebar_tab = "search"
+            return
+        
+        # Route click to appropriate tab content
+        self.focused_area = 'editor'  # Clicks in sidebar focus editor
+        
+        if self.sidebar_tab == "search":
+            self._handle_search_tab_click(mouse_y)
+        else:
+            self._handle_files_tab_click(mouse_y)
+    
+    def _handle_files_tab_click(self, mouse_y):
+        """Handle clicks in the Files tab"""
+        # Account for: terminal button (row 0), separator (row 1), tabs (row 2)
         # So actual tree starts at row 3
         click_y = mouse_y - 3
         
         tree = self._get_file_tree()
         if 0 <= click_y < len(tree):
             item = tree[click_y]
-            # Clicking on sidebar sets focus to editor
-            self.focused_area = 'editor'
             if item['type'] == 'dir':
                 # Toggle expansion
                 if item['expanded']:
@@ -951,6 +1261,45 @@ class VSCodeEditorState(BaseState):
                 # Open file
                 self._open_file(item['path'], item['name'])
                 self.selected_file = item['path']
+    
+    def _handle_search_tab_click(self, mouse_y):
+        """Handle clicks in the Search tab"""
+        # Account for: terminal button (row 0), separator (row 1), tabs (row 2), search input (row 3)
+        # So search results start at row 4
+        click_y = mouse_y - 4
+        
+        if click_y < 0 or click_y >= len(self.search_results):
+            return
+        
+        try:
+            result = self.search_results[click_y]
+            
+            if result[0] == 'file':
+                # Clicked on file header - open file at first match
+                filepath = result[1]
+                filename = filepath.split('/')[-1]
+                self._open_file(filepath, filename)
+                # Find first match for this file and navigate to it
+                for i, r in enumerate(self.search_results):
+                    if r[0] == 'match' and r[1] == filepath:
+                        line_num = r[2]
+                        self.cursor_line = line_num
+                        self.editor_scroll_y = max(0, line_num - 5)
+                        break
+                self.sidebar_tab = "files"
+            elif result[0] == 'match':
+                # Clicked on match line - open file and navigate to that line
+                filepath, line_num, line_text = result[1], result[2], result[3]
+                filename = filepath.split('/')[-1]
+                self._open_file(filepath, filename)
+                # Navigate to the matching line (after _open_file resets cursor)
+                self.cursor_line = line_num
+                self.editor_scroll_y = max(0, line_num - 5)  # Scroll to show line with some context
+                # Also switch back to files tab to see the opened file
+                self.sidebar_tab = "files"
+        except Exception as e:
+            # If file can't be opened, don't crash - just ignore
+            pass
     
     def _handle_tab_click(self, mouse_x, mouse_y):
         """Handle clicks on tabs"""
@@ -1200,10 +1549,14 @@ class VSCodeEditorState(BaseState):
         # Draw status bar
         self._render_status_bar()
         
+        # Draw quick open modal if active (on top of everything)
+        if self.quick_open_active:
+            self._render_quick_open()
+        
         self.renderer.render()
     
     def _render_sidebar(self):
-        """Render the file tree sidebar"""
+        """Render the file tree sidebar with tabs for Files and Search"""
         # Toggle Terminal button (row 0)
         terminal_text = "Close Terminal" if self.terminal_open else "Open Terminal"
         terminal_color = (100, 255, 100) if self.terminal_open else (150, 150, 150)
@@ -1213,14 +1566,36 @@ class VSCodeEditorState(BaseState):
         separator = "-" * self.sidebar_width
         self.renderer.write(0, 1, separator, (100, 100, 100))
         
-        # Sidebar title (row 2)
-        title = "FILES"
-        self.renderer.write(0, 2, title, (200, 200, 200))
+        # Sidebar tabs (row 2): Files | Search
+        files_color = (255, 255, 255) if self.sidebar_tab == "files" else (100, 100, 100)
+        search_color = (255, 255, 255) if self.sidebar_tab == "search" else (100, 100, 100)
         
+        # Draw full tabs line first with neutral color
+        tabs_text = "Files | Search"
+        self.renderer.write(0, 2, tabs_text[:self.sidebar_width], (150, 150, 150))
+        
+        # Highlight the active tab by coloring
+        if self.sidebar_tab == "files":
+            # Color "Files" (positions 0-4)
+            for i, char in enumerate("Files"):
+                self.renderer.write(i, 2, char, files_color)
+        else:
+            # Color "Search" (positions 8-13)
+            for i, char in enumerate("Search"):
+                self.renderer.write(8 + i, 2, char, search_color)
+        
+        # Render content based on active tab
+        if self.sidebar_tab == "search":
+            self._render_search_tab()
+        else:
+            self._render_files_tab()
+    
+    def _render_files_tab(self):
+        """Render the Files tab content"""
         # Get file tree
         tree = self._get_file_tree()
         
-        # Render tree items (starting at row 3, after terminal button, separator, and FILES title)
+        # Render tree items (starting at row 3, immediately after tabs)
         start_y = 3
         for i, item in enumerate(tree):
             y = start_y + i
@@ -1236,6 +1611,106 @@ class VSCodeEditorState(BaseState):
                 display_text = display_text[:self.sidebar_width-1] + "…"
             
             self.renderer.write(0, y, display_text, color)
+    
+    def _render_search_tab(self):
+        """Render the Search tab content - search within files"""
+        # Search input box (row 3)
+        search_text = self.search_query
+        if len(search_text) > self.sidebar_width - 2:
+            search_text = search_text[:self.sidebar_width - 3] + ">"
+        search_text = ("🔍 " + search_text).ljust(self.sidebar_width)
+        self.renderer.write(0, 3, search_text, (200, 200, 100))
+        
+        # Show search results grouped by file
+        if self.search_query.strip():
+            start_y = 4
+            current_y = start_y
+            
+            for i, result in enumerate(self.search_results):
+                if current_y >= self.renderer.char_height - 1:
+                    break
+                
+                if result[0] == 'file':
+                    # File header
+                    filepath = result[1]
+                    color = (0, 255, 100) if i == self.search_cursor else (200, 200, 200)
+                    display_text = filepath
+                    if len(display_text) > self.sidebar_width:
+                        display_text = display_text[:self.sidebar_width - 1] + "…"
+                    self.renderer.write(0, current_y, display_text, color)
+                    current_y += 1
+                elif result[0] == 'match':
+                    # Match line (indented)
+                    filepath, line_num, line_text = result[1], result[2], result[3]
+                    color = (0, 255, 100) if i == self.search_cursor else (150, 150, 150)
+                    # Indent with 4 spaces
+                    display_text = "    " + line_text
+                    if len(display_text) > self.sidebar_width:
+                        display_text = display_text[:self.sidebar_width - 1] + "…"
+                    self.renderer.write(0, current_y, display_text, color)
+                    current_y += 1
+        else:
+            # Show hint when no search query
+            hint = "Type to search..."
+            self.renderer.write(0, 4, hint, (100, 100, 100))
+    
+    def _render_quick_open(self):
+        """Render the quick open modal dialog"""
+        # Calculate modal size (centered, taking up middle portion of screen)
+        modal_width = min(60, self.renderer.char_width - 10)
+        modal_height = min(20, self.renderer.char_height - 6)
+        modal_start_x = (self.renderer.char_width - modal_width) // 2
+        modal_start_y = (self.renderer.char_height - modal_height) // 2
+        
+        # Draw opaque dark background overlay (entire screen)
+        for y in range(self.renderer.char_height):
+            for x in range(self.renderer.char_width):
+                # If outside modal, darken completely
+                if not (modal_start_y <= y < modal_start_y + modal_height and \
+                        modal_start_x <= x < modal_start_x + modal_width):
+                    self.renderer.write(x, y, " ", (20, 20, 20))
+                else:
+                    # Inside modal, fill with dark background
+                    self.renderer.write(x, y, " ", (40, 40, 40))
+        
+        # Draw modal box border
+        for x in range(modal_start_x, modal_start_x + modal_width):
+            self.renderer.write(x, modal_start_y, "─", (200, 200, 200))
+            self.renderer.write(x, modal_start_y + modal_height - 1, "─", (200, 200, 200))
+        
+        for y in range(modal_start_y, modal_start_y + modal_height):
+            self.renderer.write(modal_start_x, y, "│", (200, 200, 200))
+            self.renderer.write(modal_start_x + modal_width - 1, y, "│", (200, 200, 200))
+        
+        # Draw search input (row 1 of modal)
+        search_text = self.quick_open_query
+        if len(search_text) > modal_width - 4:
+            search_text = search_text[:modal_width - 5] + ">"
+        search_prompt = "❯ " + search_text
+        search_prompt = search_prompt.ljust(modal_width - 2)
+        self.renderer.write(modal_start_x + 1, modal_start_y + 1, search_prompt[:modal_width - 2], (200, 200, 100))
+        
+        # Draw results (starting from row 2 of modal)
+        result_start_y = modal_start_y + 2
+        max_results = modal_height - 3
+        
+        for i, filepath in enumerate(self.quick_open_results[:max_results]):
+            y = result_start_y + i
+            
+            # Highlight selected result
+            color = (0, 255, 100) if i == self.quick_open_cursor else (150, 150, 150)
+            
+            # Show filename with path hint
+            display_text = filepath
+            if len(display_text) > modal_width - 4:
+                display_text = display_text[:modal_width - 5] + "…"
+            
+            self.renderer.write(modal_start_x + 1, y, display_text, color)
+        
+        # Show hint if no results
+        if not self.quick_open_results and self.quick_open_query.strip():
+            hint = "No files found"
+            self.renderer.write(modal_start_x + 1, result_start_y, hint, (100, 100, 100))
     
     def _render_editor(self):
         """Render the editor pane"""
@@ -1402,6 +1877,12 @@ class VSCodeEditorState(BaseState):
         editor_start_x = self.sidebar_width + 2
         terminal_start_y = self.renderer.char_height - self.terminal_height - 1  # -1 for status bar
         
+        # Clear entire terminal area with background first
+        terminal_bg_color = (20, 20, 20)  # Dark background
+        for y in range(terminal_start_y, self.renderer.char_height - 1):  # -1 for status bar
+            for x in range(editor_start_x, self.renderer.char_width):
+                self.renderer.write(x, y, " ", terminal_bg_color)
+        
         # Draw terminal divider (resizable handle)
         divider_y = terminal_start_y - 1
         # Highlight divider if terminal is focused
@@ -1496,6 +1977,106 @@ class VSCodeEditorState(BaseState):
         """Check if mouse is in terminal area"""
         terminal_start_y = self.renderer.char_height - self.terminal_height - 1
         return mouse_y >= terminal_start_y and mouse_x > self.sidebar_width + 1
+    
+    
+    def _handle_search_keydown(self, event):
+        """Handle keyboard input for sidebar content search"""
+        if event.key == pygame.K_BACKSPACE:
+            # Remove last character from search
+            if self.search_query:
+                self.search_query = self.search_query[:-1]
+                self._search_file_content(self.search_query)
+            return
+        
+        if event.key == pygame.K_UP:
+            # Navigate search results up
+            if self.search_results:
+                self.search_cursor = max(0, self.search_cursor - 1)
+            return
+        
+        if event.key == pygame.K_DOWN:
+            # Navigate search results down
+            if self.search_results:
+                self.search_cursor = min(len(self.search_results) - 1, self.search_cursor + 1)
+            return
+        
+        if event.key == pygame.K_RETURN:
+            # Open file at selected search result
+            if self.search_results and 0 <= self.search_cursor < len(self.search_results):
+                result = self.search_results[self.search_cursor]
+                
+                if result[0] == 'file':
+                    # Open file at first match
+                    filepath = result[1]
+                    filename = filepath.split('/')[-1]
+                    self._open_file(filepath, filename)
+                    # Find first match for this file
+                    for r in self.search_results:
+                        if r[0] == 'match' and r[1] == filepath:
+                            line_num = r[2]
+                            self.cursor_line = line_num
+                            self.editor_scroll_y = max(0, line_num - 5)
+                            break
+                    self.sidebar_tab = "files"
+                elif result[0] == 'match':
+                    # Open file at specific match line
+                    filepath, line_num, _ = result[1], result[2], result[3]
+                    filename = filepath.split('/')[-1]
+                    self._open_file(filepath, filename)
+                    self.cursor_line = line_num
+                    self.editor_scroll_y = max(0, line_num - 5)
+                    self.sidebar_tab = "files"
+            return
+        
+        if event.unicode and event.unicode.isprintable():
+            # Add character to search query
+            self.search_query += event.unicode
+            self._search_file_content(self.search_query)
+    
+    def _handle_quick_open_keydown(self, event):
+        """Handle keyboard input for quick open dialog"""
+        if event.key == pygame.K_ESCAPE:
+            # Close quick open
+            self.quick_open_active = False
+            self.quick_open_query = ""
+            self.quick_open_results = []
+            return
+        
+        if event.key == pygame.K_BACKSPACE:
+            # Remove last character from search
+            if self.quick_open_query:
+                self.quick_open_query = self.quick_open_query[:-1]
+                self._search_files_quick_open(self.quick_open_query)
+            return
+        
+        if event.key == pygame.K_UP:
+            # Navigate results up
+            if self.quick_open_results:
+                self.quick_open_cursor = max(0, self.quick_open_cursor - 1)
+            return
+        
+        if event.key == pygame.K_DOWN:
+            # Navigate results down
+            if self.quick_open_results:
+                self.quick_open_cursor = min(len(self.quick_open_results) - 1, self.quick_open_cursor + 1)
+            return
+        
+        if event.key == pygame.K_RETURN:
+            # Open selected file
+            if self.quick_open_results and 0 <= self.quick_open_cursor < len(self.quick_open_results):
+                filepath = self.quick_open_results[self.quick_open_cursor]
+                # Skip directories
+                if not filepath.endswith('/'):
+                    filename = filepath.split('/')[-1]
+                    self._open_file(filepath, filename)
+                    self.quick_open_active = False
+                    self.quick_open_query = ""
+            return
+        
+        if event.unicode and event.unicode.isprintable():
+            # Add character to search query
+            self.quick_open_query += event.unicode
+            self._search_files_quick_open(self.quick_open_query)
     
     def _handle_terminal_keydown(self, event):
         """Handle keyboard input for terminal"""

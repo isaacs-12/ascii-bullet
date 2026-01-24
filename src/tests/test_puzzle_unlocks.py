@@ -4,6 +4,7 @@ Unit tests for the puzzle/achievement unlock system.
 Ensures that:
 - Minesweeper puzzle: solved when .node_1_2 and .node_2_0 are deleted, others remain.
 - Set puzzle: solved when card_1/2/3.dat perms are all same, or rwx------/---rwx---/------rwx.
+- Dependency puzzle: solved when systemctl is fixed and cooler.service.d/override.conf contains Conflicts=laser.service.
 - check_puzzles() unlocks games and returns messages only when conditions are met.
 - get_unlocked_game_help_lines() returns help only for unlocked games.
 """
@@ -15,6 +16,7 @@ from src.core.puzzle_system import (
     get_unlocked_game_help_lines,
     _check_minesweeper,
     _check_set,
+    _check_dependency_puzzle,
     MINESWEEPER_DIR,
     SET_DIR,
     UNLOCKABLE_HELP,
@@ -140,6 +142,81 @@ class TestSetPuzzle(unittest.TestCase):
         self.assertFalse(save.is_game_unlocked("set"))
 
 
+class TestDependencyPuzzle(unittest.TestCase):
+    def setUp(self):
+        self.fs = VirtualFileSystem()
+
+    def test_not_solved_when_systemctl_not_available(self):
+        """Dependency puzzle not solved if systemctl hasn't been moved to /bin"""
+        self.assertFalse(_check_dependency_puzzle(self.fs))
+
+    def test_not_solved_when_cooler_override_missing(self):
+        """Dependency puzzle not solved if cooler.service.d/override.conf doesn't exist"""
+        # Move systemctl to /bin to make it available
+        self.fs.set_user('root')
+        self.fs.change_directory("/usr/local/deprecated")
+        success, _ = self.fs.move_file("sys_control.py", "/bin/systemctl")
+        self.assertTrue(success, "Should be able to move systemctl to /bin")
+        
+        # Make it executable
+        self.fs.change_directory("/bin")
+        self.fs.set_permissions("systemctl", "rwxr-xr-x")
+        
+        # Go back to root to check - should fail without override
+        self.fs.change_directory("/")
+        self.assertFalse(_check_dependency_puzzle(self.fs))
+
+    def test_solved_when_cooler_overrides_laser(self):
+        """Dependency puzzle solved when cooler.service conflicts with laser.service"""
+        # Move systemctl to /bin
+        self.fs.set_user('root')
+        self.fs.change_directory("/usr/local/deprecated")
+        success, _ = self.fs.move_file("sys_control.py", "/bin/systemctl")
+        self.assertTrue(success)
+        
+        # Make it executable
+        self.fs.change_directory("/bin")
+        self.fs.set_permissions("systemctl", "rwxr-xr-x")
+        
+        # Create cooler.service.d directory and override
+        self.fs.change_directory("/etc/systemd/system")
+        self.fs.create_directory("cooler.service.d")
+        self.fs.change_directory("cooler.service.d")
+        self.fs.create_file("override.conf", "[Unit]\nConflicts=laser.service\n")
+        
+        # Check root directory for puzzle completion
+        self.fs.change_directory("/")
+        self.assertTrue(_check_dependency_puzzle(self.fs))
+
+    def test_check_puzzles_systemctl_unlocks_oregon_trail(self):
+        """check_puzzles() unlocks oregon_trail when dependency puzzle is solved"""
+        save = FakeSaveSystem()
+        
+        # Move systemctl to /bin
+        self.fs.set_user('root')
+        self.fs.change_directory("/usr/local/deprecated")
+        self.fs.move_file("sys_control.py", "/bin/systemctl")
+        
+        # Make it executable
+        self.fs.change_directory("/bin")
+        self.fs.set_permissions("systemctl", "rwxr-xr-x")
+        
+        # Create cooler.service.d/override.conf
+        self.fs.change_directory("/etc/systemd/system")
+        self.fs.create_directory("cooler.service.d")
+        self.fs.change_directory("cooler.service.d")
+        self.fs.create_file("override.conf", "[Unit]\nConflicts=laser.service\n")
+        
+        # Go to root and check puzzles with systemctl trigger
+        self.fs.change_directory("/")
+        out = check_puzzles(self.fs, save, "systemctl")
+        
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0][0], "oregon_trail")
+        self.assertIn("oregon_trail", out[0][1])
+        self.assertTrue(save.is_game_unlocked("oregon_trail"))
+
+
 class TestGetUnlockedGameHelpLines(unittest.TestCase):
     def test_returns_empty_when_none_unlocked(self):
         save = FakeSaveSystem()
@@ -151,11 +228,13 @@ class TestGetUnlockedGameHelpLines(unittest.TestCase):
         lines = get_unlocked_game_help_lines(save)
         self.assertEqual(lines, [UNLOCKABLE_HELP["minesweeper"]])
 
-    def test_returns_both_when_both_unlocked(self):
+    def test_returns_all_unlocked_games(self):
         save = FakeSaveSystem()
         save.unlock_game("minesweeper")
         save.unlock_game("set")
+        save.unlock_game("oregon_trail")
         lines = get_unlocked_game_help_lines(save)
         self.assertIn(UNLOCKABLE_HELP["minesweeper"], lines)
         self.assertIn(UNLOCKABLE_HELP["set"], lines)
-        self.assertEqual(len(lines), 2)
+        self.assertIn(UNLOCKABLE_HELP["oregon_trail"], lines)
+        self.assertEqual(len(lines), 3)

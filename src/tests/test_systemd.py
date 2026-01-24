@@ -676,8 +676,8 @@ class TestDependencyPuzzle(unittest.TestCase):
         result = _check_dependency_puzzle(self.filesystem)
         self.assertTrue(result, "Puzzle should be solved when all conditions are met")
     
-    def test_puzzle_unlocks_asteroids(self):
-        """Verify solving the puzzle unlocks asteroids game"""
+    def test_puzzle_unlocks_oregon_trail(self):
+        """Verify solving the puzzle unlocks oregon_trail game"""
         from src.core.puzzle_system import check_puzzles
         
         # Set up complete solution
@@ -698,22 +698,22 @@ class TestDependencyPuzzle(unittest.TestCase):
         # Check puzzle (triggered by systemctl command)
         newly_unlocked = check_puzzles(self.filesystem, self.save_system, "systemctl")
         
-        # Should unlock asteroids
+        # Should unlock oregon_trail
         self.assertEqual(len(newly_unlocked), 1, "Should unlock one game")
         game_key, message = newly_unlocked[0]
-        self.assertEqual(game_key, "asteroids", "Should unlock asteroids")
-        self.assertIn("asteroids", message.lower(), "Message should mention asteroids")
+        self.assertEqual(game_key, "oregon_trail", "Should unlock oregon_trail")
+        self.assertIn("oregon_trail", message.lower(), "Message should mention oregon_trail")
         
         # Verify game is unlocked in save system
-        self.assertTrue(self.save_system.is_game_unlocked("asteroids"),
+        self.assertTrue(self.save_system.is_game_unlocked("oregon_trail"),
                        "Asteroids should be unlocked in save system")
     
     def test_puzzle_does_not_unlock_if_already_unlocked(self):
         """Verify puzzle doesn't unlock again if already unlocked"""
         from src.core.puzzle_system import check_puzzles
         
-        # Pre-unlock asteroids
-        self.save_system.unlock_game("asteroids")
+        # Pre-unlock oregon_trail
+        self.save_system.unlock_game("oregon_trail")
         
         # Set up complete solution
         self.filesystem.set_user('root')

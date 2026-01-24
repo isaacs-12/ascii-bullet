@@ -1523,23 +1523,19 @@ class MainMenuState(BaseState):
             self.game.change_state(set_state)
             self._mark_secret_found("set_player")
         
-        elif cmd_lower == "start oregon":
-            # Launch Oregon Trail game
-            from src.states.games.oregon_trail import OregonTrailState
-            oregon_state = OregonTrailState(self.game, self)
-            self.game.change_state(oregon_state)
-            self._mark_secret_found("oregon_trail")
-        
-        elif cmd_lower == "start asteroids":
-            # Launch Asteroids game
+        elif cmd_lower == "start oregon" or cmd_lower == "start oregon_trail":
+            # Launch Oregon Trail game (only if unlocked via puzzle)
+            if not self.game.save_system.is_game_unlocked("oregon_trail"):
+                return  # do nothing when locked
             try:
-                from src.states.games.asteroids_gameplay import AsteroidsGameplayState
-                asteroids_state = AsteroidsGameplayState(self.game, self)
-                self.game.change_state(asteroids_state)
-                self._mark_secret_found("asteroids_player")
-            except ImportError:
-                self.add_output("start: 'asteroids' - game file not found")
+                from src.states.games.oregon_trail import OregonTrailState
+                oregon_state = OregonTrailState(self.game, self)
+                self.game.change_state(oregon_state)
+                self._mark_secret_found("oregon_trail")
+            except Exception as e:
+                self.add_output(f"start: 'oregon_trail' - error: {e}")
                 self.add_output("")
+        
         elif cmd_lower == "start minesweeper":
             # Launch Minesweeper game (only if unlocked via puzzle)
             if not self.game.save_system.is_game_unlocked("minesweeper"):

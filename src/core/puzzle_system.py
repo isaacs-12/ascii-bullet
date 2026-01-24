@@ -159,10 +159,10 @@ PUZZLES = [
     },
     {
         "id": "dependency",
-        "unlocks": "asteroids",
+        "unlocks": "oregon_trail",
         "trigger_on": ["systemctl"],
         "check": _check_dependency_puzzle,
-        "message": "Asteroids unlocked! You've mastered systemd dependencies. You can now run 'start asteroids'.",
+        "message": "Oregon Trail unlocked! You've mastered systemd dependencies. You can now run 'start oregon_trail'.",
     },
 ]
 
@@ -170,7 +170,7 @@ PUZZLES = [
 UNLOCKABLE_HELP = {
     "minesweeper": "  start minesweeper - Launch Minesweeper",
     "set": "  start set   - Set card game",
-    "asteroids": "  start asteroids - Launch Asteroids",
+    "oregon_trail": "  start oregon_trail - Oregon Trail",
 }
 
 

@@ -210,9 +210,8 @@ class ScriptExecutor:
             if print_collector:
                 output = print_collector()  # Calling it retrieves the string
                 if output:
-                    for line in output.strip().split('\n'):
-                        if line.strip():  # Only process non-empty lines
-                            output_callback(line)
+                    for line in output.rstrip('\n').split('\n'):
+                        output_callback(line)
             
             return (True, None)
             

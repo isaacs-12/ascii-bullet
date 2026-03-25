@@ -99,13 +99,12 @@ def _check_dependency_puzzle(filesystem):
         if not success:
             return False
         # If we can cd into it, it exists
-        filesystem.current_path = saved
-    except:
-        filesystem.current_path = saved
+    except Exception:
         return False
-    
+    finally:
+        filesystem.current_path = saved
+
     # 3. Check if override file exists and contains Conflicts=laser.service
-    override_file = "/etc/systemd/system/cooler.service.d/override.conf"
     saved = filesystem.current_path[:]
     try:
         filesystem.change_directory('/etc/systemd/system/cooler.service.d')

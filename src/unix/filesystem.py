@@ -324,7 +324,7 @@ class VirtualFileSystem:
                 '.node_2_2': self._make_file('.node_2_2', [1], permissions='rwx------'),
                 'helper.py': self._make_file('helper.py', [
                     "for f in os.listdir():",
-                    "    printt(f'{f}: {os.path.getsize(f)} bytes')",
+                    "    print(f'{f}: {os.path.getsize(f)} bytes')",
                 ], permissions='rwx------'),
             }
         )
@@ -745,21 +745,6 @@ class VirtualFileSystem:
         else:
             return (False, f"cat: {filename}: No such file")
     
-    def file_exists(self, filename):
-        """Check if a file exists in the current directory"""
-        full_path = self.get_pwd() + '/' + filename
-        
-        # Check if file has been deleted
-        if full_path in self.user_deleted_files:
-            return False
-        
-        current_dir = self.get_current_directory()
-        if 'files' in current_dir and filename in current_dir['files']:
-            return True
-        
-        # Check user-created files
-        return full_path in self.user_created_files or full_path in self.user_modified_files
-    
     # === Mutable Filesystem Operations ===
     
     def _get_user_files_size(self):
@@ -886,7 +871,15 @@ class VirtualFileSystem:
         
         # Check size (convert to string to handle non-string content)
         new_size = sum(len(str(line)) for line in new_content) if isinstance(new_content, list) else len(str(new_content))
-        if self._get_user_files_size() + new_size > self.MAX_USER_FILES_SIZE:
+        # Subtract old content size since it's already counted in _get_user_files_size()
+        old_size = 0
+        if full_path in self.user_created_files:
+            old_content = self.user_created_files[full_path]
+            old_size = sum(len(str(line)) for line in old_content) if isinstance(old_content, list) else len(str(old_content))
+        elif full_path in self.user_modified_files:
+            old_content = self.user_modified_files[full_path]
+            old_size = sum(len(str(line)) for line in old_content) if isinstance(old_content, list) else len(str(old_content))
+        if self._get_user_files_size() - old_size + new_size > self.MAX_USER_FILES_SIZE:
             return (False, "File size limit exceeded (16KB max for user files)")
         
         # Write to appropriate location
@@ -978,16 +971,18 @@ class VirtualFileSystem:
             tuple: (success, error_message or None)
         """
         full_path = self.get_pwd() + '/' + dirname
-        
-        if full_path not in self.user_created_dirs:
+        # Ensure trailing slash to match how user_created_dirs stores paths
+        full_path_with_slash = full_path if full_path.endswith('/') else full_path + '/'
+
+        if full_path_with_slash not in self.user_created_dirs:
             return (False, f"Cannot delete: not a user-created directory")
-        
+
         # Check if empty
         for file_path in self.user_created_files:
-            if file_path.startswith(full_path + '/'):
+            if file_path.startswith(full_path_with_slash):
                 return (False, f"Directory not empty")
-        
-        self.user_created_dirs.remove(full_path)
+
+        self.user_created_dirs.remove(full_path_with_slash)
         return (True, None)
     
     def get_permissions(self, filename):

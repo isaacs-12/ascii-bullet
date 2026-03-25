@@ -826,8 +826,8 @@ class MainMenuState(BaseState):
             self.game.change_state(GameplayState(self.game, previous_state=self))
         
         elif cmd_lower in ["continue", "load", "resume"]:
-            self.add_output("Loading saved game...")
-            self.add_output("(Save system not implemented yet)")
+            self.add_output("Resuming game...")
+            self.add_output("Your progress has been automatically saved.")
             self.add_output("")
         
         elif cmd_lower in ["quit", "exit", "q"]:
@@ -1218,7 +1218,8 @@ class MainMenuState(BaseState):
                 self.add_output(f"Created file: {filename}")
                 self._save_filesystem()
                 # Check puzzle triggers after file creation (might create override files)
-                if '/etc/systemd/system/' in filename and '.d/' in filename:
+                full_touch_path = self.filesystem.get_pwd() + '/' + filename
+                if '/etc/systemd/system/' in full_touch_path:
                     for _game, msg in self._check_puzzle_triggers("systemctl"):
                         self.add_output("")
                         self.add_output(msg)
@@ -1234,7 +1235,8 @@ class MainMenuState(BaseState):
                 self.add_output(f"Created directory: {dirname}/")
                 self._save_filesystem()
                 # Check puzzle triggers after directory creation (might create override directories)
-                if '/etc/systemd/system/' in dirname and '.d' in dirname:
+                full_mkdir_path = self.filesystem.get_pwd() + '/' + dirname
+                if '/etc/systemd/system/' in full_mkdir_path:
                     for _game, msg in self._check_puzzle_triggers("systemctl"):
                         self.add_output("")
                         self.add_output(msg)
@@ -1487,7 +1489,8 @@ class MainMenuState(BaseState):
                     self._save_filesystem()
                     # Check puzzle triggers after file write (might create override files)
                     # Only check systemctl puzzle if writing to systemd override directory
-                    if '/etc/systemd/system/' in filename and '.d/' in filename:
+                    full_write_path = self.filesystem.get_pwd() + '/' + filename
+                    if '/etc/systemd/system/' in full_write_path:
                         for _game, msg in self._check_puzzle_triggers("systemctl"):
                             self.add_output("")
                             self.add_output(msg)
@@ -1694,11 +1697,8 @@ class MainMenuState(BaseState):
                 home_path = "home/pilot/blthll"
                 old_path = self.filesystem.current_path[:]
                 success, error = self.filesystem.change_directory(home_path)
-                if success:
-                    self.add_output("")
-                else:
+                if not success:
                     self.add_output(f"cd: {error}")
-                    self.add_output("")
             self.add_output("")
         
         elif self._easter_egg_commands(cmd_lower=cmd_lower, command=command):

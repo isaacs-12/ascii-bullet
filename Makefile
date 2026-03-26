@@ -1,4 +1,4 @@
-.PHONY: build clean clean-all install-deps test help
+.PHONY: build clean clean-all install-deps test help release
 
 # Variables
 VENV = venv
@@ -13,6 +13,7 @@ RELEASE_DIR = $(DIST_DIR)/$(EXECUTABLE_NAME)
 help:
 	@echo "Available targets:"
 	@echo "  build          - Build executable with timestamp (preserves old builds)"
+	@echo "  release        - Build and upload a GitHub release (VERSION=x.y.z required)"
 	@echo "  clean          - Remove build artifacts only (preserves distributions)"
 	@echo "  clean-all      - Remove ALL build artifacts and distributions"
 	@echo "  install-deps   - Install PyInstaller in virtual environment"
@@ -179,3 +180,32 @@ clean-all:
 	rm -rf $(BUILD_DIR) $(DIST_DIR)
 	rm -rf *.spec
 	@echo "Clean complete!"
+
+# Release target: builds and uploads to GitHub
+# Usage: make release VERSION=1.0.0
+release: build
+ifndef VERSION
+	$(error VERSION is required. Usage: make release VERSION=1.0.0)
+endif
+	@echo "Creating release v$(VERSION)..."
+	@# Zip the artifact
+	@ARTIFACT=""; \
+	if [ "$$(uname)" = "Darwin" ]; then \
+		ARTIFACT="ascii-bullet-v$(VERSION)-macos.zip"; \
+		cd $(RELEASE_DIR) && zip -r ../../$$ARTIFACT $(EXECUTABLE_NAME).app; \
+	elif [ "$$(uname)" = "Linux" ]; then \
+		ARTIFACT="ascii-bullet-v$(VERSION)-linux.tar.gz"; \
+		cd $(RELEASE_DIR) && tar czf ../../$$ARTIFACT $(EXECUTABLE_NAME); \
+	else \
+		ARTIFACT="ascii-bullet-v$(VERSION)-windows.zip"; \
+		cd $(RELEASE_DIR) && zip -r ../../$$ARTIFACT $(EXECUTABLE_NAME).exe; \
+	fi; \
+	cd "$(CURDIR)"; \
+	echo "Created $$ARTIFACT"; \
+	echo "Creating GitHub release v$(VERSION)..."; \
+	gh release create "v$(VERSION)" "$$ARTIFACT" \
+		--title "ASCII Bullet Hell v$(VERSION)" \
+		--generate-notes; \
+	echo ""; \
+	echo "Release v$(VERSION) published!"; \
+	echo "  https://github.com/isaacs-12/ascii-bullet/releases/tag/v$(VERSION)"

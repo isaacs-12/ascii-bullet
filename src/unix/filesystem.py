@@ -985,13 +985,233 @@ class VirtualFileSystem:
         self.user_created_dirs.remove(full_path_with_slash)
         return (True, None)
     
+    def read_file_at_path(self, path):
+        """
+        Read a file given a relative or absolute path (e.g., 'data/secret/file.txt', '/var/log/boot.log').
+        Temporarily navigates to the file's parent directory, reads the file, and restores the original directory.
+
+        Args:
+            path: Relative or absolute path to the file
+
+        Returns:
+            tuple: (success: bool, content: list of strings or error message)
+        """
+        if '/' not in path:
+            # Simple filename in current directory
+            return self.read_file(path)
+
+        saved = self.current_path[:]
+        try:
+            # Split into directory and filename
+            last_slash = path.rfind('/')
+            dir_part = path[:last_slash] if last_slash > 0 else '/'
+            filename = path[last_slash + 1:]
+
+            if not filename:
+                return (False, f"cat: {path}: Is a directory")
+
+            success, error = self.change_directory(dir_part)
+            if not success:
+                return (False, f"cat: {path}: No such file or directory")
+
+            return self.read_file(filename)
+        finally:
+            self.current_path = saved
+
+    def list_directory_at_path(self, path, show_hidden=False):
+        """
+        List directory contents at an arbitrary path.
+
+        Args:
+            path: Relative or absolute path to the directory
+            show_hidden: If True, include hidden files/directories
+
+        Returns:
+            tuple: (success: bool, contents: list of names or error message)
+        """
+        saved = self.current_path[:]
+        try:
+            success, error = self.change_directory(path)
+            if not success:
+                return (False, f"ls: cannot access '{path}': No such file or directory")
+            contents = self.list_directory(show_hidden=show_hidden)
+            return (True, contents)
+        finally:
+            self.current_path = saved
+
+    def is_directory(self, name):
+        """
+        Check if a name refers to a directory in the current location.
+
+        Args:
+            name: Name or path to check
+
+        Returns:
+            bool: True if it's a directory
+        """
+        name = name.rstrip('/')
+
+        # Check if it's an absolute or relative path we can cd into
+        if '/' in name:
+            saved = self.current_path[:]
+            try:
+                success, _ = self.change_directory(name)
+                return success
+            finally:
+                self.current_path = saved
+
+        # Check current directory's subdirs
+        current_dir = self.get_current_directory()
+        if 'dirs' in current_dir and name in current_dir['dirs']:
+            return True
+
+        # Check user-created directories
+        full_path = self.get_pwd() + '/' + name + '/'
+        if full_path in self.user_created_dirs:
+            return True
+
+        # Check root-level dirs if at root
+        if len(self.current_path) == 0 and name in self.filesystem:
+            return True
+
+        return False
+
+    def copy_file(self, source, destination):
+        """
+        Copy a file from source to destination.
+
+        Args:
+            source: Source filename (in current directory)
+            destination: Destination filename or path
+
+        Returns:
+            tuple: (success, error_message or None)
+        """
+        # Read source file content
+        if not self.file_exists(source):
+            return (False, f"cp: cannot stat '{source}': No such file or directory")
+
+        if not self.check_permission(source, 'r'):
+            return (False, f"cp: cannot open '{source}': Permission denied")
+
+        success, content = self.read_file(source)
+        if not success:
+            return (False, f"cp: cannot read '{source}': {content}")
+
+        # Get source permissions
+        source_perms = self.get_permissions(source)
+
+        # Resolve destination
+        if '/' in destination:
+            dest_parts = destination.rsplit('/', 1)
+            dest_dir = dest_parts[0]
+            dest_filename = dest_parts[1] if dest_parts[1] else source
+
+            saved = self.current_path[:]
+            success_cd, error = self.change_directory(dest_dir)
+            if not success_cd:
+                self.current_path = saved
+                return (False, f"cp: target '{dest_dir}': No such file or directory")
+
+            if self.file_exists(dest_filename):
+                self.current_path = saved
+                return (False, f"cp: '{destination}' already exists")
+
+            result = self.create_file(dest_filename, content)
+            if result[0] and source_perms and source_perms != "rwxrwxrwx":
+                dest_full = self.get_pwd() + '/' + dest_filename
+                self.file_permissions[dest_full] = source_perms
+            self.current_path = saved
+            return result
+        else:
+            if self.file_exists(destination):
+                return (False, f"cp: '{destination}' already exists")
+
+            result = self.create_file(destination, content)
+            if result[0] and source_perms and source_perms != "rwxrwxrwx":
+                dest_full = self.get_pwd() + '/' + destination
+                self.file_permissions[dest_full] = source_perms
+            return result
+
+    def delete_directory_recursive(self, dirname):
+        """
+        Recursively delete a user-created directory and all its contents.
+        Only works on user-created directories.
+
+        Args:
+            dirname: Name of directory to delete
+
+        Returns:
+            tuple: (success, error_message or None)
+        """
+        full_path = self.get_pwd() + '/' + dirname
+        full_path_with_slash = full_path if full_path.endswith('/') else full_path + '/'
+
+        if full_path_with_slash not in self.user_created_dirs:
+            return (False, f"rm: cannot remove '{dirname}': Not a user-created directory")
+
+        # Remove all user-created files under this directory
+        files_to_remove = [f for f in self.user_created_files if f.startswith(full_path_with_slash)]
+        for f in files_to_remove:
+            del self.user_created_files[f]
+            if f in self.file_permissions:
+                del self.file_permissions[f]
+            if f in self.file_owners:
+                del self.file_owners[f]
+
+        # Remove all user-created subdirectories
+        dirs_to_remove = [d for d in self.user_created_dirs if d.startswith(full_path_with_slash)]
+        dirs_to_remove.append(full_path_with_slash)
+        for d in dirs_to_remove:
+            self.user_created_dirs.remove(d)
+
+        return (True, None)
+
+    def _walk_recursive(self, dir_path):
+        """Internal recursive walk helper. Yields (dirpath, dirnames, filenames)."""
+        saved = self.current_path[:]
+        self.change_directory(dir_path)
+
+        items = self.list_directory(show_hidden=True)
+        dirnames = [i.rstrip('/') for i in items if i.endswith('/')]
+        filenames = [i for i in items if not i.endswith('/')]
+
+        yield (dir_path, dirnames, filenames)
+
+        for d in dirnames:
+            child_path = dir_path.rstrip('/') + '/' + d
+            yield from self._walk_recursive(child_path)
+
+        self.current_path = saved
+
+    def walk_directory(self, path=None):
+        """
+        Recursively walk a directory tree, yielding (dirpath, dirnames, filenames).
+
+        Args:
+            path: Starting path (None = current directory)
+
+        Yields:
+            tuple: (dirpath, dirnames, filenames)
+        """
+        saved = self.current_path[:]
+        try:
+            if path:
+                success, _ = self.change_directory(path)
+                if not success:
+                    return
+
+            yield from self._walk_recursive(self.get_pwd())
+        finally:
+            self.current_path = saved
+
     def get_permissions(self, filename):
         """
         Get file or directory permissions
-        
+
         Args:
             filename: Name of file or directory (may have trailing / for dirs)
-            
+
         Returns:
             str: Permission string like "rwx" (3 chars) or "rwxrwxrwx" (9 chars), or None if file/dir doesn't exist
         """

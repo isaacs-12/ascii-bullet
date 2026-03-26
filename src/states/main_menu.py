@@ -826,8 +826,7 @@ class MainMenuState(BaseState):
             self.game.change_state(GameplayState(self.game, previous_state=self))
         
         elif cmd_lower in ["continue", "load", "resume"]:
-            self.add_output("Resuming game...")
-            self.add_output("Your progress has been automatically saved.")
+            self.add_output("Your progress is saved automatically. Type 'start' to play.")
             self.add_output("")
         
         elif cmd_lower in ["quit", "exit", "q"]:
@@ -851,25 +850,54 @@ class MainMenuState(BaseState):
         elif cmd_lower in ["clear", "cls"]:
             self.output_lines = []
         
-        elif cmd_lower.startswith("ls -"):
-            # List files with details (including permissions)
-            args = cmd_lower[4:].strip()
-            show_hidden = "a" in args  # Show hidden files if -a flag is present
-            if args in ["l", "la", "al", "a", ""]:
+        elif cmd_lower.startswith("ls") and (cmd_lower == "ls" or cmd_lower == "dir" or cmd_lower[2:3] in (' ', '-')):
+            # Parse ls arguments: flags and optional path
+            rest = command[2:].strip() if len(command) > 2 else ""
+            flags = ""
+            ls_path = None
+            # Split tokens to find flags vs path
+            tokens = rest.split()
+            for tok in tokens:
+                if tok.startswith('-'):
+                    flags += tok[1:]
+                else:
+                    ls_path = tok
+
+            show_hidden = 'a' in flags
+            show_long = 'l' in flags
+            # Validate flags (only l and a are supported)
+            unknown_flags = set(flags) - {'l', 'a'}
+            if unknown_flags:
+                self.add_output(f"ls: invalid option -- '{list(unknown_flags)[0]}'")
+                self.add_output("")
+                return
+
+            # Get items from path or current directory
+            if ls_path:
+                success, result = self.filesystem.list_directory_at_path(ls_path, show_hidden=show_hidden)
+                if not success:
+                    self.add_output(result)
+                    self.add_output("")
+                    return
+                items = result
+            else:
                 items = self.filesystem.list_directory(show_hidden=show_hidden)
+
+            if show_long:
+                # Prepend . and .. for -a
+                if show_hidden:
+                    current_user = self.filesystem.get_current_user()
+                    self.add_output(f"drwxr-xr-x  {current_user:6}  ./")
+                    self.add_output(f"drwxr-xr-x  {current_user:6}  ../")
                 if items:
-                    # Show detailed listing with permissions and owner
                     for item in items:
                         if item.endswith('/'):
-                            # Directory - get owner (will default to current user if not specified)
                             owner = self.filesystem.get_file_owner(item)
                             self.add_output(f"drwxr-xr-x  {owner:6}  {item}")
                         else:
-                            # File - show actual permissions and owner
                             perms = self.filesystem.get_permissions(item)
                             owner = self.filesystem.get_file_owner(item)
                             if perms:
-                                # If permissions are 3 characters, pad to 9 for display
                                 if len(perms) == 3:
                                     perms_display = perms + "------"
                                 elif len(perms) == 9:
@@ -879,23 +907,13 @@ class MainMenuState(BaseState):
                                 self.add_output(f"-{perms_display}  {owner:6}  {item}")
                             else:
                                 self.add_output(f"-rw-------  {owner:6}  {item}")
-                else:
+                elif not show_hidden:
                     self.add_output("(empty directory)")
             else:
-                self.add_output(f"ls: invalid option -- '{args}'")
-            self.add_output("")
-            # Track directory visit
-            current_path = self.filesystem.get_pwd()
-            self.game.save_system.mark_directory_visited(current_path)
-        
-        elif cmd_lower in ["ls", "dir"]:
-            # List directory contents (hidden files not shown by default)
-            contents = self.filesystem.list_directory(show_hidden=False)
-            if contents:
-                # Format with wrapping based on terminal width
-                self._format_ls_output(contents)
-            else:
-                self.add_output("(empty directory)")
+                if items:
+                    self._format_ls_output(items)
+                else:
+                    self.add_output("(empty directory)")
             self.add_output("")
             # Track directory visit
             current_path = self.filesystem.get_pwd()
@@ -1053,9 +1071,14 @@ class MainMenuState(BaseState):
                 self.add_output("SEE ALSO")
                 self.add_output("       help(1)")
                 self.add_output("")
+            elif topic in self._get_man_pages():
+                for line in self._get_man_pages()[topic]:
+                    self.add_output(line)
+                self.add_output("")
             else:
                 self.add_output(f"No manual entry for '{topic}'")
-                self.add_output("Available manual pages: python")
+                available = ", ".join(sorted(["python"] + list(self._get_man_pages().keys())))
+                self.add_output(f"Available manual pages: {available}")
                 self.add_output("")
         
         elif cmd_lower.startswith("readme ") or cmd_lower == "readme":
@@ -1085,19 +1108,28 @@ class MainMenuState(BaseState):
                 self.game.save_system.mark_file_read(f"{current_path}/{filename}")
         
         elif cmd_lower.startswith("cat "):
-            # Read file
+            # Read file (supports relative/absolute paths)
             filename = command[4:].strip()
-            success, content = self.filesystem.read_file(filename)
-            if success:
-                for line in content:
-                    self.add_output(line)
+            # Check if target is a directory
+            if self.filesystem.is_directory(filename):
+                self.add_output(f"cat: {filename}: Is a directory")
                 self.add_output("")
-                # Track file read
-                current_path = self.filesystem.get_pwd()
-                self.game.save_system.mark_file_read(f"{current_path}/{filename}")
             else:
-                self.add_output(content)
-                self.add_output("")
+                # Use path-aware read if path contains /
+                if '/' in filename:
+                    success, content = self.filesystem.read_file_at_path(filename)
+                else:
+                    success, content = self.filesystem.read_file(filename)
+                if success:
+                    for line in content:
+                        self.add_output(str(line))
+                    self.add_output("")
+                    # Track file read
+                    current_path = self.filesystem.get_pwd()
+                    self.game.save_system.mark_file_read(f"{current_path}/{filename}")
+                else:
+                    self.add_output(content)
+                    self.add_output("")
         
         elif cmd_lower.startswith("stat "):
             # Show file statistics
@@ -1203,13 +1235,252 @@ class MainMenuState(BaseState):
             # Display stat information (similar to Unix stat command)
             self.add_output(f"  File: {filename}")
             self.add_output(f"  Size: {size:<12} Blocks: {blocks:<10} IO Block: 4096   {file_type}")
-            self.add_output(f"Device: 0h/{0:<10} Inode: 0     Links: 1")
+            inode = abs(hash(full_path)) % 999999 + 1000
+            self.add_output(f"Device: 801h/{2049:<8} Inode: {inode:<6} Links: 1")
             self.add_output(f"Access: ({perms_display})  Uid: ({owner})   Gid: (users)")
             self.add_output(f"Access: {access_str}")
             self.add_output(f"Modify: {modify_str}")
             self.add_output(f"Change: {change_str}")
             self.add_output("")
-        
+
+        elif cmd_lower.startswith("head "):
+            # Show first N lines of a file
+            args = command[5:].strip().split()
+            num_lines = 10
+            filename = None
+            i = 0
+            while i < len(args):
+                if args[i] == '-n' and i + 1 < len(args):
+                    try:
+                        num_lines = int(args[i + 1])
+                    except ValueError:
+                        pass
+                    i += 2
+                elif args[i].startswith('-') and args[i][1:].isdigit():
+                    num_lines = int(args[i][1:])
+                    i += 1
+                else:
+                    filename = args[i]
+                    i += 1
+            if not filename:
+                self.add_output("head: missing file operand")
+                self.add_output("Usage: head [-n N] <file>")
+                self.add_output("")
+            else:
+                if '/' in filename:
+                    success, content = self.filesystem.read_file_at_path(filename)
+                else:
+                    success, content = self.filesystem.read_file(filename)
+                if success:
+                    for line in content[:num_lines]:
+                        self.add_output(str(line))
+                else:
+                    self.add_output(f"head: {content}")
+                self.add_output("")
+
+        elif cmd_lower.startswith("tail "):
+            # Show last N lines of a file
+            args = command[5:].strip().split()
+            num_lines = 10
+            filename = None
+            i = 0
+            while i < len(args):
+                if args[i] == '-n' and i + 1 < len(args):
+                    try:
+                        num_lines = int(args[i + 1])
+                    except ValueError:
+                        pass
+                    i += 2
+                elif args[i].startswith('-') and args[i][1:].isdigit():
+                    num_lines = int(args[i][1:])
+                    i += 1
+                else:
+                    filename = args[i]
+                    i += 1
+            if not filename:
+                self.add_output("tail: missing file operand")
+                self.add_output("Usage: tail [-n N] <file>")
+                self.add_output("")
+            else:
+                if '/' in filename:
+                    success, content = self.filesystem.read_file_at_path(filename)
+                else:
+                    success, content = self.filesystem.read_file(filename)
+                if success:
+                    for line in content[-num_lines:]:
+                        self.add_output(str(line))
+                else:
+                    self.add_output(f"tail: {content}")
+                self.add_output("")
+
+        elif cmd_lower.startswith("grep "):
+            # Search for pattern in file(s)
+            args = command[5:].strip()
+            if not args:
+                self.add_output("grep: missing pattern")
+                self.add_output("Usage: grep <pattern> <file>")
+                self.add_output("")
+            else:
+                # Parse: grep [-i] [-n] pattern file
+                tokens = args.split()
+                case_insensitive = False
+                show_line_nums = False
+                while tokens and tokens[0].startswith('-'):
+                    flag = tokens.pop(0)
+                    if 'i' in flag:
+                        case_insensitive = True
+                    if 'n' in flag:
+                        show_line_nums = True
+                if len(tokens) < 2:
+                    self.add_output("grep: missing pattern or file")
+                    self.add_output("Usage: grep [-i] [-n] <pattern> <file>")
+                    self.add_output("")
+                else:
+                    pattern = tokens[0].strip("'\"")
+                    filename = tokens[1]
+                    if '/' in filename:
+                        success, content = self.filesystem.read_file_at_path(filename)
+                    else:
+                        success, content = self.filesystem.read_file(filename)
+                    if success:
+                        found = False
+                        for i, line in enumerate(content, 1):
+                            line_str = str(line)
+                            match = (pattern.lower() in line_str.lower()) if case_insensitive else (pattern in line_str)
+                            if match:
+                                found = True
+                                if show_line_nums:
+                                    self.add_output(f"{i}:{line_str}")
+                                else:
+                                    self.add_output(line_str)
+                        if not found:
+                            pass  # grep returns empty on no match (standard behavior)
+                    else:
+                        self.add_output(f"grep: {filename}: No such file or directory")
+                    self.add_output("")
+
+        elif cmd_lower.startswith("wc "):
+            # Word/line/char count
+            filename = command[3:].strip()
+            # Strip common flags (just ignore them, show all counts)
+            if filename.startswith('-'):
+                parts = filename.split(None, 1)
+                filename = parts[1] if len(parts) > 1 else ""
+            if not filename:
+                self.add_output("wc: missing file operand")
+                self.add_output("Usage: wc <file>")
+                self.add_output("")
+            else:
+                if '/' in filename:
+                    success, content = self.filesystem.read_file_at_path(filename)
+                else:
+                    success, content = self.filesystem.read_file(filename)
+                if success:
+                    lines = len(content)
+                    words = sum(len(str(line).split()) for line in content)
+                    chars = sum(len(str(line)) for line in content) + max(0, lines - 1)  # newlines
+                    self.add_output(f"  {lines:6}  {words:6}  {chars:6} {filename}")
+                else:
+                    self.add_output(f"wc: {filename}: No such file or directory")
+                self.add_output("")
+
+        elif cmd_lower.startswith("file "):
+            # Identify file type
+            name = command[5:].strip()
+            if not name:
+                self.add_output("file: missing file operand")
+                self.add_output("")
+            elif self.filesystem.is_directory(name):
+                self.add_output(f"{name}: directory")
+                self.add_output("")
+            elif self.filesystem.file_exists(name):
+                ext = name.rsplit('.', 1)[-1] if '.' in name else ''
+                type_map = {
+                    'py': 'Python script, ASCII text executable',
+                    'txt': 'ASCII text',
+                    'md': 'UTF-8 Unicode text, markdown',
+                    'dat': 'data',
+                    'log': 'ASCII text, log file',
+                    'conf': 'ASCII text, configuration file',
+                    'service': 'systemd unit file, ASCII text',
+                    'sh': 'Bourne-Again shell script, ASCII text executable',
+                    'json': 'JSON data, ASCII text',
+                }
+                file_type = type_map.get(ext, 'ASCII text')
+                # Check if file starts with shebang
+                success, content = self.filesystem.read_file(name)
+                if success and content and str(content[0]).startswith('#!'):
+                    file_type = f"script, {file_type}"
+                if name.startswith('.'):
+                    file_type = f"hidden file, {file_type}"
+                self.add_output(f"{name}: {file_type}")
+                self.add_output("")
+            else:
+                self.add_output(f"file: {name}: No such file or directory")
+                self.add_output("")
+
+        elif cmd_lower == "find" or cmd_lower.startswith("find "):
+            # Simplified find command
+            args = command[5:].strip() if len(command) > 5 else ""
+            tokens = args.split() if args else []
+            search_path = "."
+            name_pattern = None
+
+            # Parse arguments
+            i = 0
+            while i < len(tokens):
+                if tokens[i] == '-name' and i + 1 < len(tokens):
+                    name_pattern = tokens[i + 1].strip("'\"")
+                    i += 2
+                elif tokens[i] == '-type':
+                    i += 2  # Skip -type flag (ignore it)
+                elif not tokens[i].startswith('-'):
+                    search_path = tokens[i]
+                    i += 1
+                else:
+                    i += 1
+
+            # Walk the filesystem
+            import fnmatch
+            found_any = False
+            for dirpath, dirnames, filenames in self.filesystem.walk_directory(search_path if search_path != "." else None):
+                # Make paths relative to search_path
+                if search_path == ".":
+                    rel = dirpath[len(self.filesystem.get_pwd()):]
+                    display_path = "." + rel if rel else "."
+                else:
+                    display_path = dirpath
+
+                for d in dirnames:
+                    full_display = display_path.rstrip('/') + '/' + d
+                    if name_pattern is None or fnmatch.fnmatch(d, name_pattern):
+                        self.add_output(full_display)
+                        found_any = True
+                for f in filenames:
+                    full_display = display_path.rstrip('/') + '/' + f
+                    if name_pattern is None or fnmatch.fnmatch(f, name_pattern):
+                        self.add_output(full_display)
+                        found_any = True
+
+            if not found_any and name_pattern:
+                pass  # find returns empty on no matches
+            self.add_output("")
+
+        elif cmd_lower.startswith("cp "):
+            # Copy file
+            args = command[3:].strip().split()
+            if len(args) == 2:
+                source, destination = args
+                success, error = self.filesystem.copy_file(source, destination)
+                if success:
+                    self.add_output(f"Copied: {source} -> {destination}")
+                    self._save_filesystem()
+                else:
+                    self.add_output(error)
+            else:
+                self.add_output("Usage: cp <source> <destination>")
+            self.add_output("")
+
         elif cmd_lower.startswith("touch "):
             # Create empty file
             filename = command[6:].strip()
@@ -1300,6 +1571,28 @@ class MainMenuState(BaseState):
                     self.add_output(f"Error: {error}")
                 self.add_output("")
         
+        elif cmd_lower.startswith("rm -r ") or cmd_lower.startswith("rm -rf ") or cmd_lower.startswith("rm -fr "):
+            # Recursive directory delete (only for user-created directories)
+            # Extract dirname after flags
+            parts = command.split(None, 2)
+            if len(parts) < 3:
+                self.add_output("rm: missing operand")
+                self.add_output("")
+            else:
+                dirname = parts[2].strip()
+                if dirname in ['/', '/home', '/usr', '/etc', '/var', '/bin', '/system']:
+                    self.add_output("ERROR: Cannot delete bullets. They multiply too fast!")
+                    self.add_output("")
+                    self._mark_secret_found("destructive")
+                else:
+                    success, error = self.filesystem.delete_directory_recursive(dirname)
+                    if success:
+                        self.add_output(f"Deleted: {dirname}/")
+                        self._save_filesystem()
+                    else:
+                        self.add_output(error)
+                    self.add_output("")
+
         elif cmd_lower.startswith("rm ") and not cmd_lower.startswith("rm -"):
             # Delete file
             filename = command[3:].strip()
@@ -1501,6 +1794,15 @@ class MainMenuState(BaseState):
                 self.add_output("Invalid syntax. Use: echo text > file  or  echo text >> file")
                 self.add_output("")
         
+        elif cmd_lower.startswith("echo ") or cmd_lower == "echo":
+            # Echo text to terminal (without redirect)
+            text = command[5:].strip() if len(command) > 5 else ""
+            # Strip surrounding quotes
+            if (text.startswith('"') and text.endswith('"')) or (text.startswith("'") and text.endswith("'")):
+                text = text[1:-1]
+            self.add_output(text)
+            self.add_output("")
+
         elif cmd_lower == "sudo":
             # sudo with no arguments
             self.add_output("usage: sudo <command>")
@@ -1559,19 +1861,30 @@ class MainMenuState(BaseState):
             self.game.change_state(top_state)
             self._mark_secret_found("process_viewer")
         
-        elif cmd_lower == "ps":
-            # Static process list
+        elif cmd_lower == "ps" or cmd_lower.startswith("ps "):
+            # Static process list (ignore flags like aux, -ef, -e, -a)
             self._show_processes()
-        
+
         elif cmd_lower.startswith("kill "):
-            # Kill a process
-            try:
-                pid_str = command[5:].strip()
-                pid = int(pid_str)
-                self._kill_process(pid)
-            except ValueError:
-                self.add_output(f"kill: invalid process id: {command[5:].strip()}")
+            # Kill a process (tolerates signal flags like -9, -SIGKILL, -TERM)
+            args = command[5:].strip().split()
+            pid_str = None
+            for arg in args:
+                if arg.startswith('-'):
+                    continue  # Skip signal flags
+                pid_str = arg
+                break
+            if not pid_str:
+                self.add_output("kill: missing process id")
+                self.add_output("Usage: kill [-signal] <pid>")
                 self.add_output("")
+            else:
+                try:
+                    pid = int(pid_str)
+                    self._kill_process(pid)
+                except ValueError:
+                    self.add_output(f"kill: invalid process id: {pid_str}")
+                    self.add_output("")
         
         elif cmd_lower.startswith("systemctl ") or cmd_lower == "systemctl":
             # Check if systemctl is "installed" (Stage 1 of puzzle)
@@ -1650,55 +1963,130 @@ class MainMenuState(BaseState):
                     self.add_output("Commands: status, start, stop, enable, disable, list-units, list-unit-files")
                     self.add_output("")
         
-        elif cmd_lower in ["stat", "cat", "touch", "mkdir", "rm", "rmdir", "mv", "chmod", "vim", "vi", "edit", "emacs", "python", "run", "kill", "man", "cd"]:
+        elif cmd_lower == "history":
+            # Show command history
+            for i, cmd in enumerate(self.command_history, 1):
+                self.add_output(f"  {i:4}  {cmd}")
+            self.add_output("")
+
+        elif cmd_lower.startswith("which ") or cmd_lower.startswith("type "):
+            # Show command location
+            cmd_name = command.split(None, 1)[1].strip() if len(command.split(None, 1)) > 1 else ""
+            command_paths = {
+                'ls': '/usr/bin/ls', 'cd': '(shell builtin)', 'pwd': '/usr/bin/pwd',
+                'cat': '/usr/bin/cat', 'head': '/usr/bin/head', 'tail': '/usr/bin/tail',
+                'grep': '/usr/bin/grep', 'find': '/usr/bin/find', 'wc': '/usr/bin/wc',
+                'cp': '/usr/bin/cp', 'mv': '/usr/bin/mv', 'rm': '/usr/bin/rm',
+                'mkdir': '/usr/bin/mkdir', 'rmdir': '/usr/bin/rmdir',
+                'touch': '/usr/bin/touch', 'chmod': '/usr/bin/chmod', 'stat': '/usr/bin/stat',
+                'vim': '/usr/bin/vim', 'vi': '/usr/bin/vi', 'edit': '/usr/bin/edit',
+                'python': '/usr/bin/python3', 'echo': '(shell builtin)',
+                'kill': '/usr/bin/kill', 'ps': '/usr/bin/ps', 'top': '/usr/bin/top',
+                'sudo': '/usr/bin/sudo', 'man': '/usr/bin/man', 'file': '/usr/bin/file',
+                'uname': '/usr/bin/uname', 'hostname': '/usr/bin/hostname',
+                'date': '/usr/bin/date', 'uptime': '/usr/bin/uptime',
+                'id': '/usr/bin/id', 'whoami': '/usr/bin/whoami',
+                'env': '/usr/bin/env', 'printenv': '/usr/bin/printenv',
+                'history': '(shell builtin)', 'which': '/usr/bin/which',
+                'type': '(shell builtin)', 'code': '/usr/bin/code',
+            }
+            # Check if systemctl is installed
+            if cmd_name == 'systemctl' and self._is_systemctl_available():
+                command_paths['systemctl'] = '/bin/systemctl'
+            if cmd_name in command_paths:
+                self.add_output(command_paths[cmd_name])
+            else:
+                self.add_output(f"{cmd_name}: not found")
+            self.add_output("")
+
+        elif cmd_lower == "uname -a" or cmd_lower == "uname --all":
+            self.add_output("BLTHLL blthll-terminal 1.0.0 WalnutIndustries arm64 GNU/Linux")
+            self.add_output("")
+
+        elif cmd_lower == "uname" or cmd_lower.startswith("uname "):
+            # uname with any other flags just shows the kernel name
+            self.add_output("BLTHLL")
+            self.add_output("")
+
+        elif cmd_lower == "hostname":
+            self.add_output("blthll-terminal")
+            self.add_output("")
+
+        elif cmd_lower == "date":
+            from datetime import datetime
+            self.add_output(datetime.now().strftime("%a %b %d %H:%M:%S %Z %Y"))
+            self.add_output("")
+
+        elif cmd_lower == "uptime":
+            ticks = pygame.time.get_ticks()
+            secs = ticks // 1000
+            hours = secs // 3600
+            mins = (secs % 3600) // 60
+            self.add_output(f" up {hours}:{mins:02d}, 1 user, load average: 0.42, 0.38, 0.35")
+            self.add_output("")
+
+        elif cmd_lower == "id":
+            user = self.filesystem.get_current_user()
+            if user == "root":
+                self.add_output("uid=0(root) gid=0(root) groups=0(root)")
+            else:
+                self.add_output("uid=1000(pilot) gid=1000(users) groups=1000(users)")
+            self.add_output("")
+
+        elif cmd_lower in ["env", "printenv"]:
+            user = self.filesystem.get_current_user()
+            env_vars = [
+                f"USER={user}",
+                f"HOME=/home/pilot/blthll",
+                "SHELL=/bin/bash",
+                "PATH=/usr/local/bin:/usr/bin:/bin",
+                "TERM=xterm-256color",
+                "LANG=en_US.UTF-8",
+                "HOSTNAME=blthll-terminal",
+                f"PWD={self.filesystem.get_pwd()}",
+                "EDITOR=vim",
+                "BLTHLL_VERSION=1.0.0",
+            ]
+            for var in env_vars:
+                self.add_output(var)
+            self.add_output("")
+
+        elif cmd_lower in ["stat", "cat", "touch", "mkdir", "rm", "rmdir", "mv", "chmod",
+                           "vim", "vi", "edit", "emacs", "python", "run", "kill", "man",
+                           "cd", "head", "tail", "grep", "wc", "file", "cp"]:
             # Commands that require arguments - show usage
-            # Note: systemctl is handled separately above
-            if cmd_lower == "stat":
-                self.add_output("stat: missing file operand")
-                self.add_output("Usage: stat <filename>")
-            elif cmd_lower == "cat":
-                self.add_output("cat: missing file operand")
-                self.add_output("Usage: cat <filename>")
-            elif cmd_lower == "touch":
-                self.add_output("touch: missing file operand")
-                self.add_output("Usage: touch <filename>")
-            elif cmd_lower == "mkdir":
-                self.add_output("mkdir: missing directory operand")
-                self.add_output("Usage: mkdir <directory>")
-            elif cmd_lower == "rmdir":
-                self.add_output("rmdir: missing directory operand")
-                self.add_output("Usage: rmdir <directory>")
-            elif cmd_lower == "rm":
-                self.add_output("rm: missing operand")
-                self.add_output("Usage: rm <filename>")
-            elif cmd_lower == "mv":
-                self.add_output("mv: missing file operand")
-                self.add_output("Usage: mv <source> <destination>")
-            elif cmd_lower == "chmod":
-                self.add_output("chmod: missing operand")
-                self.add_output("Usage: chmod <mode> <filename>")
-            elif cmd_lower in ["vim", "vi", "edit"]:
-                self.add_output(f"{cmd_lower}: missing file operand")
-                self.add_output(f"Usage: {cmd_lower} <filename>")
-            elif cmd_lower == "emacs":
-                self.add_output("emacs: missing file operand")
-                self.add_output("Usage: emacs <filename>")
-            elif cmd_lower in ["python", "run"]:
-                self.add_output(f"{cmd_lower}: missing file operand")
-                self.add_output(f"Usage: {cmd_lower} <script.py>")
-            elif cmd_lower == "kill":
-                self.add_output("kill: missing operand")
-                self.add_output("Usage: kill <pid>")
-            elif cmd_lower == "man":
-                self.add_output("man: missing topic operand")
-                self.add_output("Usage: man <topic>")
-            elif cmd_lower == "cd":
+            usage_map = {
+                'stat': ("stat: missing file operand", "Usage: stat <filename>"),
+                'cat': ("cat: missing file operand", "Usage: cat <filename>"),
+                'touch': ("touch: missing file operand", "Usage: touch <filename>"),
+                'mkdir': ("mkdir: missing directory operand", "Usage: mkdir <directory>"),
+                'rmdir': ("rmdir: missing directory operand", "Usage: rmdir <directory>"),
+                'rm': ("rm: missing operand", "Usage: rm <filename>"),
+                'mv': ("mv: missing file operand", "Usage: mv <source> <destination>"),
+                'chmod': ("chmod: missing operand", "Usage: chmod <mode> <filename>"),
+                'vim': ("vim: missing file operand", "Usage: vim <filename>"),
+                'vi': ("vi: missing file operand", "Usage: vi <filename>"),
+                'edit': ("edit: missing file operand", "Usage: edit <filename>"),
+                'emacs': ("emacs: missing file operand", "Usage: emacs <filename>"),
+                'python': ("python: missing file operand", "Usage: python <script.py>"),
+                'run': ("run: missing file operand", "Usage: run <script.py>"),
+                'kill': ("kill: missing operand", "Usage: kill [-signal] <pid>"),
+                'man': ("man: missing topic operand", "Usage: man <topic>"),
+                'head': ("head: missing file operand", "Usage: head [-n N] <file>"),
+                'tail': ("tail: missing file operand", "Usage: tail [-n N] <file>"),
+                'grep': ("grep: missing pattern", "Usage: grep [-i] [-n] <pattern> <file>"),
+                'wc': ("wc: missing file operand", "Usage: wc <file>"),
+                'file': ("file: missing file operand", "Usage: file <name>"),
+                'cp': ("cp: missing file operand", "Usage: cp <source> <destination>"),
+                'cd': (None, None),  # Special handling below
+            }
+            if cmd_lower == "cd":
                 # cd without args goes to home (standard Unix behavior)
-                home_path = "home/pilot/blthll"
-                old_path = self.filesystem.current_path[:]
-                success, error = self.filesystem.change_directory(home_path)
-                if not success:
-                    self.add_output(f"cd: {error}")
+                self.filesystem.current_path = ['home', 'pilot', 'blthll']
+            else:
+                msg, usage = usage_map.get(cmd_lower, (f"{cmd_lower}: missing operand", ""))
+                self.add_output(msg)
+                self.add_output(usage)
             self.add_output("")
         
         elif self._easter_egg_commands(cmd_lower=cmd_lower, command=command):
@@ -1709,31 +2097,60 @@ class MainMenuState(BaseState):
             self.add_output("Type 'help' for available commands")
             self.add_output("")
     
+    # Commands that take directory arguments (use directory completions)
+    _DIR_COMPLETION_CMDS = {'cd', 'ls', 'find'}
+    # Commands that take file arguments (use file completions)
+    _FILE_COMPLETION_CMDS = {
+        'cat', 'vim', 'vi', 'edit', 'emacs', 'python', 'run', 'rm',
+        'chmod', 'stat', 'mv', 'cp', 'head', 'tail', 'wc', 'file',
+        'readme', 'grep',
+    }
+
     def _handle_tab_completion(self):
-        """Handle tab completion for cd and cat commands"""
+        """Handle tab completion for commands that take file/directory arguments"""
         if not self.input_buffer:
             return
-        
+
         parts = self.input_buffer.split()
         if len(parts) == 0:
             return
-        
+
         command = parts[0].lower()
-        
-        # Only support completion for cd and cat
-        if command not in ['cd', 'cat']:
+
+        # Check if this command supports completion
+        if command not in self._DIR_COMPLETION_CMDS and command not in self._FILE_COMPLETION_CMDS:
             return
-        
+
         # Get the partial path/filename being typed
-        if len(parts) == 1:
-            partial = ""
+        # For grep, the file arg is the 3rd token (grep pattern file)
+        if command == 'grep':
+            if len(parts) < 3:
+                return  # Need at least grep + pattern before completing file
+            partial = parts[-1] if len(parts) >= 3 else ""
+        elif command == 'chmod':
+            if len(parts) < 3:
+                # Still typing mode, no file completion yet
+                if len(parts) == 2:
+                    return
+                partial = ""
+            else:
+                partial = parts[2]
+        elif command in ('mv', 'cp'):
+            # Complete the current (last) argument
+            if len(parts) == 1:
+                partial = ""
+            else:
+                partial = parts[-1]
         else:
-            partial = parts[1]
-        
+            if len(parts) == 1:
+                partial = ""
+            else:
+                partial = parts[1]
+
         # Get appropriate completions
-        if command == 'cd':
+        if command in self._DIR_COMPLETION_CMDS:
             completions = self._get_directory_completions(partial)
-        else:  # cat
+        else:
             completions = self._get_file_completions(partial)
         
         if not completions:
@@ -1751,17 +2168,10 @@ class MainMenuState(BaseState):
                 # It's a path completion - add trailing slash
                 completion = completion + '/'
             
-            if len(parts) == 1:
-                self.input_buffer = f"{command} {completion}"
-            else:
-                # For path completions, the completion already includes the full path
-                # For simple completions, just replace the partial
-                if '/' in partial:
-                    # Path completion - use the full completion as-is (it already has the path)
-                    self.input_buffer = f"{command} {completion}"
-                else:
-                    # Simple completion - just replace
-                    self.input_buffer = f"{command} {completion}"
+            # Rebuild the command with the completion replacing the appropriate token
+            # For multi-arg commands, replace the last token
+            prefix_parts = parts[:-1] if len(parts) > 1 else [command]
+            self.input_buffer = ' '.join(prefix_parts) + ' ' + completion
         else:
             # Multiple completions - show them with wrapping
             self.add_output("")
@@ -1981,7 +2391,262 @@ class MainMenuState(BaseState):
     def _check_puzzle_triggers(self, trigger):
         """Run puzzle checks for the given trigger ('rm', 'chmod'). Return list of (game, message) for newly unlocked."""
         return check_puzzles(self.filesystem, self.game.save_system, trigger)
-    
+
+    def _get_man_pages(self):
+        """Return dictionary of short man page entries for common commands."""
+        return {
+            'ls': [
+                "LS(1)                    BLTHLL Terminal Manual                    LS(1)",
+                "",
+                "NAME",
+                "       ls - list directory contents",
+                "",
+                "SYNOPSIS",
+                "       ls [-la] [path]",
+                "",
+                "DESCRIPTION",
+                "       List information about files in the current directory or at path.",
+                "",
+                "OPTIONS",
+                "       -l     Long format: show permissions, owner, and name",
+                "       -a     Show hidden files (names starting with .)",
+                "",
+                "EXAMPLES",
+                "       ls                List files in current directory",
+                "       ls -la            Long listing with hidden files",
+                "       ls /var/log       List files in /var/log",
+            ],
+            'cd': [
+                "CD(1)                    BLTHLL Terminal Manual                    CD(1)",
+                "",
+                "NAME",
+                "       cd - change the working directory",
+                "",
+                "SYNOPSIS",
+                "       cd [path]",
+                "",
+                "DESCRIPTION",
+                "       Change the current directory to path. With no arguments, changes",
+                "       to the home directory. Supports '..' for parent, '~' for home,",
+                "       and absolute paths starting with '/'.",
+                "",
+                "       TAB completion is available for directory names.",
+            ],
+            'cat': [
+                "CAT(1)                   BLTHLL Terminal Manual                   CAT(1)",
+                "",
+                "NAME",
+                "       cat - concatenate and print files",
+                "",
+                "SYNOPSIS",
+                "       cat <file>",
+                "",
+                "DESCRIPTION",
+                "       Read the contents of file and print to standard output.",
+                "       Supports relative paths (e.g., cat data/secret/file.txt).",
+            ],
+            'chmod': [
+                "CHMOD(1)                 BLTHLL Terminal Manual                 CHMOD(1)",
+                "",
+                "NAME",
+                "       chmod - change file mode bits",
+                "",
+                "SYNOPSIS",
+                "       chmod <mode> <file>",
+                "",
+                "DESCRIPTION",
+                "       Change the permissions of a file.",
+                "",
+                "       Modes can be specified as:",
+                "         Octal:    chmod 755 file.py   (rwxr-xr-x)",
+                "         Octal:    chmod 644 data.txt  (rw-r--r--)",
+                "         Symbolic: chmod rwxr-xr-x file.py",
+                "",
+                "       Only the file owner (or root) can change permissions.",
+            ],
+            'rm': [
+                "RM(1)                    BLTHLL Terminal Manual                    RM(1)",
+                "",
+                "NAME",
+                "       rm - remove files or directories",
+                "",
+                "SYNOPSIS",
+                "       rm <file>",
+                "       rm -r <directory>",
+                "",
+                "DESCRIPTION",
+                "       Remove files. With -r, remove directories recursively.",
+                "       Recursive delete only works on user-created directories.",
+            ],
+            'mv': [
+                "MV(1)                    BLTHLL Terminal Manual                    MV(1)",
+                "",
+                "NAME",
+                "       mv - move or rename files",
+                "",
+                "SYNOPSIS",
+                "       mv <source> <destination>",
+                "",
+                "DESCRIPTION",
+                "       Move source to destination, or rename if in the same directory.",
+                "       Preserves permissions and ownership.",
+            ],
+            'cp': [
+                "CP(1)                    BLTHLL Terminal Manual                    CP(1)",
+                "",
+                "NAME",
+                "       cp - copy files",
+                "",
+                "SYNOPSIS",
+                "       cp <source> <destination>",
+                "",
+                "DESCRIPTION",
+                "       Copy source file to destination. Preserves permissions.",
+            ],
+            'kill': [
+                "KILL(1)                  BLTHLL Terminal Manual                  KILL(1)",
+                "",
+                "NAME",
+                "       kill - send a signal to a process",
+                "",
+                "SYNOPSIS",
+                "       kill [-signal] <pid>",
+                "",
+                "DESCRIPTION",
+                "       Send a signal to a process. Default signal terminates the process.",
+                "       Use 'ps' or 'top' to find process IDs.",
+                "",
+                "EXAMPLES",
+                "       kill 1234          Terminate process 1234",
+                "       kill -9 1234       Force kill process 1234",
+            ],
+            'top': [
+                "TOP(1)                   BLTHLL Terminal Manual                   TOP(1)",
+                "",
+                "NAME",
+                "       top - display system processes",
+                "",
+                "SYNOPSIS",
+                "       top",
+                "",
+                "DESCRIPTION",
+                "       Interactive process viewer. Shows CPU usage, memory, and more.",
+                "       Press 'q' to quit, 'k' to kill a process.",
+            ],
+            'ps': [
+                "PS(1)                    BLTHLL Terminal Manual                    PS(1)",
+                "",
+                "NAME",
+                "       ps - report a snapshot of current processes",
+                "",
+                "SYNOPSIS",
+                "       ps [aux]",
+                "",
+                "DESCRIPTION",
+                "       Display currently running processes with PID, command, CPU and",
+                "       memory usage. Flags like 'aux' and '-ef' are accepted.",
+            ],
+            'grep': [
+                "GREP(1)                  BLTHLL Terminal Manual                  GREP(1)",
+                "",
+                "NAME",
+                "       grep - search file contents for a pattern",
+                "",
+                "SYNOPSIS",
+                "       grep [-i] [-n] <pattern> <file>",
+                "",
+                "DESCRIPTION",
+                "       Search for lines matching pattern in file.",
+                "",
+                "OPTIONS",
+                "       -i     Case-insensitive search",
+                "       -n     Prefix each matching line with its line number",
+                "",
+                "EXAMPLES",
+                "       grep error /var/log/boot.log",
+                "       grep -in failed boot.log",
+            ],
+            'find': [
+                "FIND(1)                  BLTHLL Terminal Manual                  FIND(1)",
+                "",
+                "NAME",
+                "       find - search for files in a directory hierarchy",
+                "",
+                "SYNOPSIS",
+                "       find [path] [-name pattern]",
+                "",
+                "DESCRIPTION",
+                "       Recursively list files and directories. Optionally filter by name",
+                "       using shell glob patterns.",
+                "",
+                "EXAMPLES",
+                "       find                List everything under current directory",
+                "       find . -name '*.py' Find all Python files",
+                "       find /var -name log Find items named 'log' under /var",
+            ],
+            'systemctl': [
+                "SYSTEMCTL(1)             BLTHLL Terminal Manual             SYSTEMCTL(1)",
+                "",
+                "NAME",
+                "       systemctl - control the systemd system and service manager",
+                "",
+                "SYNOPSIS",
+                "       systemctl <command> [service]",
+                "",
+                "COMMANDS",
+                "       status <service>     Show service status",
+                "       start <service>      Start a service",
+                "       stop <service>       Stop a service",
+                "       enable <service>     Enable at boot (requires sudo)",
+                "       disable <service>    Disable at boot (requires sudo)",
+                "       list-units           List all active units",
+                "       list-unit-files      List installed unit files",
+                "",
+                "DESCRIPTION",
+                "       Services are defined in /usr/lib/systemd/system/.",
+                "       Drop-in overrides can be placed in /etc/systemd/system/<service>.d/.",
+                "       Services have dependencies (Requires=) and conflicts (Conflicts=).",
+            ],
+            'head': [
+                "HEAD(1)                  BLTHLL Terminal Manual                  HEAD(1)",
+                "",
+                "NAME",
+                "       head - output the first part of files",
+                "",
+                "SYNOPSIS",
+                "       head [-n N] <file>",
+                "",
+                "DESCRIPTION",
+                "       Print the first 10 lines of file. Use -n to specify a number.",
+            ],
+            'tail': [
+                "TAIL(1)                  BLTHLL Terminal Manual                  TAIL(1)",
+                "",
+                "NAME",
+                "       tail - output the last part of files",
+                "",
+                "SYNOPSIS",
+                "       tail [-n N] <file>",
+                "",
+                "DESCRIPTION",
+                "       Print the last 10 lines of file. Use -n to specify a number.",
+            ],
+            'sudo': [
+                "SUDO(8)                  BLTHLL Terminal Manual                  SUDO(8)",
+                "",
+                "NAME",
+                "       sudo - execute a command as root",
+                "",
+                "SYNOPSIS",
+                "       sudo <command>",
+                "       sudo !!           Re-run last command as root",
+                "",
+                "DESCRIPTION",
+                "       Execute a command with superuser privileges. You will be prompted",
+                "       for the password. Authentication is cached for 5 minutes.",
+            ],
+        }
+
     def _handle_sudo_command(self, command):
         """
         Handle sudo command execution
@@ -1993,7 +2658,18 @@ class MainMenuState(BaseState):
             self.add_output("usage: sudo <command>")
             self.add_output("")
             return
-        
+
+        # Handle sudo !! (re-run last command as root)
+        if command == "!!":
+            # Find the last non-sudo command in history
+            if len(self.command_history) >= 2:
+                command = self.command_history[-2]  # -1 is "sudo !!" itself
+                self.add_output(f"sudo {command}")
+            else:
+                self.add_output("bash: !!: event not found")
+                self.add_output("")
+                return
+
         # Check if sudo is already valid
         if self._is_sudo_valid():
             # Execute command as root

@@ -1,0 +1,681 @@
+{
+ "_categories": {
+  "game": "GAMES",
+  "files": "FILES",
+  "text": "TEXT & PIPES",
+  "system": "SYSTEM",
+  "apps": "APPS",
+  "shell": "SHELL"
+ },
+ "start": {
+  "category": "game",
+  "usage": "start [game]",
+  "summary": "Play BLTHLL, the bullet hell (or an unlocked game)",
+  "aliases": [
+   "play",
+   "new",
+   "begin"
+  ],
+  "path": "/usr/bin/start",
+  "completion": "none"
+ },
+ "continue": {
+  "category": "game",
+  "usage": "continue",
+  "summary": "Resume the bullet hell from your last boss checkpoint",
+  "aliases": [
+   "resume",
+   "load"
+  ],
+  "path": "/usr/bin/continue",
+  "completion": "none"
+ },
+ "highscores": {
+  "category": "game",
+  "usage": "highscores",
+  "summary": "Top 10 scores",
+  "aliases": [
+   "scores",
+   "high"
+  ],
+  "path": "/usr/bin/highscores",
+  "completion": "none"
+ },
+ "stats": {
+  "category": "game",
+  "usage": "stats",
+  "summary": "Your statistics",
+  "aliases": [
+   "statistics"
+  ],
+  "path": "/usr/bin/stats",
+  "completion": "none"
+ },
+ "achievements": {
+  "category": "game",
+  "usage": "achievements [--all]",
+  "summary": "Achievements and secrets found",
+  "aliases": [
+   "secret",
+   "secrets",
+   "trophies"
+  ],
+  "path": "/usr/bin/achievements",
+  "completion": "none"
+ },
+ "godmode": {
+  "category": "game",
+  "usage": "godmode",
+  "summary": "Toggle QA invincibility (scores not saved)",
+  "hidden": true,
+  "path": "/usr/bin/godmode",
+  "completion": "none"
+ },
+ "ls": {
+  "category": "files",
+  "usage": "ls [-la1] [path...]",
+  "summary": "List directory contents",
+  "aliases": [
+   "dir"
+  ],
+  "path": "/usr/bin/ls",
+  "completion": "dir"
+ },
+ "cd": {
+  "category": "files",
+  "usage": "cd [dir]",
+  "summary": "Change directory (cd -, cd ~, cd ..)",
+  "path": "",
+  "completion": "dir"
+ },
+ "pwd": {
+  "category": "files",
+  "usage": "pwd",
+  "summary": "Print working directory",
+  "path": "/usr/bin/pwd",
+  "completion": "none"
+ },
+ "cat": {
+  "category": "files",
+  "usage": "cat [-n] <file>...",
+  "summary": "Print files",
+  "path": "/usr/bin/cat"
+ },
+ "head": {
+  "category": "files",
+  "usage": "head [-n N] <file>",
+  "summary": "First lines of a file",
+  "path": "/usr/bin/head"
+ },
+ "tail": {
+  "category": "files",
+  "usage": "tail [-n N] <file>",
+  "summary": "Last lines of a file",
+  "path": "/usr/bin/tail"
+ },
+ "less": {
+  "category": "files",
+  "usage": "less <file>",
+  "summary": "Page through a file",
+  "aliases": [
+   "more"
+  ],
+  "path": "/usr/bin/less"
+ },
+ "grep": {
+  "category": "files",
+  "usage": "grep [-invcr] <pattern> [file...]",
+  "summary": "Search text with a regex",
+  "aliases": [
+   "egrep"
+  ],
+  "path": "/usr/bin/grep"
+ },
+ "wc": {
+  "category": "files",
+  "usage": "wc [-lwc] [file]",
+  "summary": "Count lines, words, bytes",
+  "path": "/usr/bin/wc"
+ },
+ "find": {
+  "category": "files",
+  "usage": "find [path] [-name pat] [-type f|d]",
+  "summary": "Search for files",
+  "path": "/usr/bin/find",
+  "completion": "dir"
+ },
+ "tree": {
+  "category": "files",
+  "usage": "tree [-a] [dir]",
+  "summary": "Show a directory tree",
+  "path": "/usr/bin/tree",
+  "completion": "dir"
+ },
+ "cp": {
+  "category": "files",
+  "usage": "cp <src> <dest>",
+  "summary": "Copy a file",
+  "path": "/usr/bin/cp"
+ },
+ "mv": {
+  "category": "files",
+  "usage": "mv <src> <dest>",
+  "summary": "Move or rename a file",
+  "path": "/usr/bin/mv"
+ },
+ "rm": {
+  "category": "files",
+  "usage": "rm [-rf] <file>...",
+  "summary": "Remove files ('rm save' resets progress)",
+  "path": "/usr/bin/rm"
+ },
+ "mkdir": {
+  "category": "files",
+  "usage": "mkdir [-p] <dir>",
+  "summary": "Create a directory",
+  "path": "/usr/bin/mkdir",
+  "completion": "dir"
+ },
+ "rmdir": {
+  "category": "files",
+  "usage": "rmdir <dir>",
+  "summary": "Remove an empty directory",
+  "path": "/usr/bin/rmdir",
+  "completion": "dir"
+ },
+ "touch": {
+  "category": "files",
+  "usage": "touch <file>",
+  "summary": "Create a file / update its timestamp",
+  "path": "/usr/bin/touch"
+ },
+ "chmod": {
+  "category": "files",
+  "usage": "chmod <mode> <file>",
+  "summary": "Change permissions (755, +x, u+rw, go-w)",
+  "path": "/usr/bin/chmod"
+ },
+ "stat": {
+  "category": "files",
+  "usage": "stat <file>",
+  "summary": "File metadata",
+  "path": "/usr/bin/stat"
+ },
+ "file": {
+  "category": "files",
+  "usage": "file <file>",
+  "summary": "Guess a file's type",
+  "path": "/usr/bin/file"
+ },
+ "du": {
+  "category": "files",
+  "usage": "du [dir]",
+  "summary": "Disk usage",
+  "path": "/usr/bin/du",
+  "completion": "dir"
+ },
+ "echo": {
+  "category": "text",
+  "usage": "echo [-ne] <text>",
+  "summary": "Print text",
+  "path": "",
+  "completion": "none"
+ },
+ "sort": {
+  "category": "text",
+  "usage": "sort [-rnuf] [file]",
+  "summary": "Sort lines",
+  "path": "/usr/bin/sort"
+ },
+ "uniq": {
+  "category": "text",
+  "usage": "uniq [-cdu] [file]",
+  "summary": "Collapse repeated lines",
+  "path": "/usr/bin/uniq"
+ },
+ "rev": {
+  "category": "text",
+  "usage": "rev [file]",
+  "summary": "Reverse each line",
+  "path": "/usr/bin/rev"
+ },
+ "tr": {
+  "category": "text",
+  "usage": "tr <set1> <set2> | tr -d <set>",
+  "summary": "Translate characters",
+  "path": "/usr/bin/tr",
+  "completion": "none"
+ },
+ "cut": {
+  "category": "text",
+  "usage": "cut -d<c> -f<n> | -c<a-b>",
+  "summary": "Cut fields or columns",
+  "path": "/usr/bin/cut"
+ },
+ "nl": {
+  "category": "text",
+  "usage": "nl [file]",
+  "summary": "Number lines",
+  "path": "/usr/bin/nl"
+ },
+ "tee": {
+  "category": "text",
+  "usage": "tee [-a] <file>",
+  "summary": "Copy stdin to a file and stdout",
+  "path": "/usr/bin/tee"
+ },
+ "seq": {
+  "category": "text",
+  "usage": "seq [first] [step] last",
+  "summary": "Print a sequence of numbers",
+  "path": "/usr/bin/seq",
+  "completion": "none"
+ },
+ "yes": {
+  "category": "text",
+  "usage": "yes [word]",
+  "summary": "Say yes. A lot.",
+  "path": "/usr/bin/yes",
+  "completion": "none"
+ },
+ "base64": {
+  "category": "text",
+  "usage": "base64 [-d] [file]",
+  "summary": "Encode or decode base64",
+  "path": "/usr/bin/base64"
+ },
+ "rot13": {
+  "category": "text",
+  "usage": "rot13 [file]",
+  "summary": "Military-grade encryption",
+  "hidden": true,
+  "path": "/usr/bin/rot13"
+ },
+ "fortune": {
+  "category": "text",
+  "usage": "fortune",
+  "summary": "A random fortune",
+  "path": "/usr/games/fortune",
+  "completion": "none"
+ },
+ "cowsay": {
+  "category": "text",
+  "usage": "cowsay <text>",
+  "summary": "A cow says things",
+  "path": "/usr/games/cowsay",
+  "completion": "none"
+ },
+ "figlet": {
+  "category": "text",
+  "usage": "figlet <text>",
+  "summary": "Big block letters",
+  "aliases": [
+   "banner"
+  ],
+  "path": "/usr/bin/figlet",
+  "completion": "none"
+ },
+ "lolcat": {
+  "category": "text",
+  "usage": "lolcat [file]",
+  "summary": "Rainbow-ify text (pipe into it)",
+  "path": "/usr/games/lolcat"
+ },
+ "ps": {
+  "category": "system",
+  "usage": "ps",
+  "summary": "List processes",
+  "path": "/usr/bin/ps",
+  "completion": "none"
+ },
+ "top": {
+  "category": "system",
+  "usage": "top",
+  "summary": "Live process viewer",
+  "aliases": [
+   "htop"
+  ],
+  "path": "/usr/bin/top",
+  "completion": "none"
+ },
+ "kill": {
+  "category": "system",
+  "usage": "kill [-9] <pid>",
+  "summary": "Terminate a process",
+  "path": "/usr/bin/kill",
+  "completion": "none"
+ },
+ "systemctl": {
+  "category": "system",
+  "usage": "systemctl <cmd> [unit]",
+  "summary": "Control systemd services",
+  "path": "/bin/systemctl",
+  "completion": "none"
+ },
+ "sudo": {
+  "category": "system",
+  "usage": "sudo <command>",
+  "summary": "Run a command as root (sudo -i for a root shell)",
+  "path": "/usr/bin/sudo",
+  "completion": "command"
+ },
+ "su": {
+  "category": "system",
+  "usage": "su [user]",
+  "summary": "Switch user",
+  "hidden": true,
+  "path": "/usr/bin/su",
+  "completion": "none"
+ },
+ "uname": {
+  "category": "system",
+  "usage": "uname [-a]",
+  "summary": "System information",
+  "path": "/usr/bin/uname",
+  "completion": "none"
+ },
+ "hostname": {
+  "category": "system",
+  "usage": "hostname",
+  "summary": "Host name",
+  "path": "/usr/bin/hostname",
+  "completion": "none"
+ },
+ "whoami": {
+  "category": "system",
+  "usage": "whoami",
+  "summary": "Current user",
+  "path": "/usr/bin/whoami",
+  "completion": "none"
+ },
+ "id": {
+  "category": "system",
+  "usage": "id",
+  "summary": "User and group IDs",
+  "path": "/usr/bin/id",
+  "completion": "none"
+ },
+ "date": {
+  "category": "system",
+  "usage": "date",
+  "summary": "Current date and time",
+  "path": "/usr/bin/date",
+  "completion": "none"
+ },
+ "uptime": {
+  "category": "system",
+  "usage": "uptime",
+  "summary": "How long the machine has been up",
+  "path": "/usr/bin/uptime",
+  "completion": "none"
+ },
+ "df": {
+  "category": "system",
+  "usage": "df",
+  "summary": "Disk space",
+  "path": "/usr/bin/df",
+  "completion": "none"
+ },
+ "free": {
+  "category": "system",
+  "usage": "free",
+  "summary": "Memory usage",
+  "path": "/usr/bin/free",
+  "completion": "none"
+ },
+ "neofetch": {
+  "category": "system",
+  "usage": "neofetch",
+  "summary": "System info, with style",
+  "hidden": true,
+  "path": "/usr/bin/neofetch",
+  "completion": "none"
+ },
+ "theme": {
+  "category": "system",
+  "usage": "theme [name]",
+  "summary": "Change colours (phosphor, amber, ice, synthwave, mono)",
+  "path": "/usr/bin/theme",
+  "completion": "none"
+ },
+ "crt": {
+  "category": "system",
+  "usage": "crt [on|off]",
+  "summary": "Toggle CRT scanlines",
+  "path": "/usr/bin/crt",
+  "completion": "none"
+ },
+ "shake": {
+  "category": "system",
+  "usage": "shake [on|off]",
+  "summary": "Toggle screen shake",
+  "path": "/usr/bin/shake",
+  "completion": "none"
+ },
+ "mail": {
+  "category": "system",
+  "usage": "mail",
+  "summary": "Read your mail",
+  "path": "/usr/bin/mail",
+  "completion": "none"
+ },
+ "vim": {
+  "category": "apps",
+  "usage": "vim <file>",
+  "summary": "Edit a file",
+  "aliases": [
+   "vi",
+   "edit"
+  ],
+  "path": "/usr/bin/vim"
+ },
+ "emacs": {
+  "category": "apps",
+  "usage": "emacs <file>",
+  "summary": "Edit a file (needs brew install emacs)",
+  "path": "/usr/bin/emacs"
+ },
+ "nano": {
+  "category": "apps",
+  "usage": "nano <file>",
+  "summary": "Edit a file (sort of)",
+  "hidden": true,
+  "path": "/usr/bin/nano"
+ },
+ "code": {
+  "category": "apps",
+  "usage": "code",
+  "summary": "VSCode-ish editor with a terminal",
+  "path": "/usr/bin/code",
+  "completion": "none"
+ },
+ "readme": {
+  "category": "apps",
+  "usage": "readme [file]",
+  "summary": "Render a markdown file",
+  "path": "/usr/bin/readme"
+ },
+ "python": {
+  "category": "apps",
+  "usage": "python <script.py>",
+  "summary": "Run a sandboxed Python script",
+  "aliases": [
+   "python3",
+   "run"
+  ],
+  "path": "/usr/bin/python"
+ },
+ "brew": {
+  "category": "apps",
+  "usage": "brew <update|install|list>",
+  "summary": "Package manager",
+  "path": "/usr/local/bin/brew",
+  "completion": "none"
+ },
+ "sl": {
+  "category": "apps",
+  "usage": "sl",
+  "summary": "Steam locomotive",
+  "hidden": true,
+  "path": "/usr/games/sl",
+  "completion": "none"
+ },
+ "cmatrix": {
+  "category": "apps",
+  "usage": "cmatrix",
+  "summary": "Digital rain",
+  "hidden": true,
+  "path": "/usr/bin/cmatrix",
+  "completion": "none"
+ },
+ "claude": {
+  "category": "apps",
+  "usage": "claude [prompt]",
+  "summary": "AI assistant (claude, parody)",
+  "hidden": true,
+  "path": "/opt/walnut/ai/bin/claude",
+  "completion": "none"
+ },
+ "gemini": {
+  "category": "apps",
+  "usage": "gemini [prompt]",
+  "summary": "AI assistant (gemini, parody)",
+  "hidden": true,
+  "path": "/opt/walnut/ai/bin/gemini",
+  "completion": "none"
+ },
+ "codex": {
+  "category": "apps",
+  "usage": "codex [prompt]",
+  "summary": "AI assistant (codex, parody)",
+  "hidden": true,
+  "path": "/opt/walnut/ai/bin/codex",
+  "completion": "none"
+ },
+ "copilot": {
+  "category": "apps",
+  "usage": "copilot [prompt]",
+  "summary": "AI assistant (copilot, parody)",
+  "hidden": true,
+  "path": "/opt/walnut/ai/bin/copilot",
+  "completion": "none"
+ },
+ "ollama": {
+  "category": "apps",
+  "usage": "ollama [prompt]",
+  "summary": "AI assistant (ollama, parody)",
+  "hidden": true,
+  "path": "/opt/walnut/ai/bin/ollama",
+  "completion": "none"
+ },
+ "ai": {
+  "category": "apps",
+  "usage": "ai",
+  "summary": "List the Walnut AI assistants",
+  "hidden": true,
+  "path": "/opt/walnut/ai/bin/ai",
+  "completion": "none"
+ },
+ "help": {
+  "category": "shell",
+  "usage": "help [command]",
+  "summary": "This help",
+  "aliases": [
+   "?",
+   "commands"
+  ],
+  "path": "",
+  "completion": "command"
+ },
+ "man": {
+  "category": "shell",
+  "usage": "man <command>",
+  "summary": "Manual pages",
+  "path": "/usr/bin/man",
+  "completion": "command"
+ },
+ "clear": {
+  "category": "shell",
+  "usage": "clear",
+  "summary": "Clear the screen (Ctrl+L)",
+  "path": "",
+  "completion": "none"
+ },
+ "history": {
+  "category": "shell",
+  "usage": "history [-c] [n]",
+  "summary": "Command history",
+  "path": "",
+  "completion": "none"
+ },
+ "which": {
+  "category": "shell",
+  "usage": "which <command>",
+  "summary": "Locate a command",
+  "aliases": [
+   "type"
+  ],
+  "path": "/usr/bin/which",
+  "completion": "command"
+ },
+ "alias": {
+  "category": "shell",
+  "usage": "alias [name=value]",
+  "summary": "Show or set aliases",
+  "path": "",
+  "completion": "none"
+ },
+ "unalias": {
+  "category": "shell",
+  "usage": "unalias <name>",
+  "summary": "Remove an alias",
+  "hidden": true,
+  "path": "",
+  "completion": "none"
+ },
+ "export": {
+  "category": "shell",
+  "usage": "export NAME=value",
+  "summary": "Set an environment variable",
+  "path": "",
+  "completion": "none"
+ },
+ "env": {
+  "category": "shell",
+  "usage": "env",
+  "summary": "Environment variables",
+  "aliases": [
+   "printenv"
+  ],
+  "path": "/usr/bin/env",
+  "completion": "none"
+ },
+ "true": {
+  "category": "shell",
+  "usage": "true",
+  "summary": "Do nothing, successfully",
+  "hidden": true,
+  "path": "",
+  "completion": "none"
+ },
+ "false": {
+  "category": "shell",
+  "usage": "false",
+  "summary": "Do nothing, unsuccessfully",
+  "hidden": true,
+  "path": "",
+  "completion": "none"
+ },
+ "exit": {
+  "category": "shell",
+  "usage": "exit",
+  "summary": "Quit (or leave a root shell)",
+  "aliases": [
+   "quit",
+   "q",
+   "logout"
+  ],
+  "path": "",
+  "completion": "none"
+ }
+}

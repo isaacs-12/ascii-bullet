@@ -23,6 +23,7 @@ class EditorState(BaseState):
         super().__init__(game)
         self.filesystem = filesystem
         self.filename = filename
+        self.path = filesystem.abspath(filename)
         self.previous_state = previous_state
         self.editor_name = editor_name
         
@@ -42,7 +43,7 @@ class EditorState(BaseState):
         self.ctrl_x_pressed = False  # For emacs C-x prefix
         
         # Load file if it exists
-        success, content = filesystem.read_file(filename)
+        success, content = filesystem.read_file(self.path)
         if success:
             if isinstance(content, list):
                 self.lines = [str(line) for line in content]
@@ -373,22 +374,15 @@ class EditorState(BaseState):
             return False
         
         try:
-            full_path = self.filesystem.get_pwd() + '/' + self.filename
-            
-            # Directly save to filesystem (bypass create_file/write_file for simplicity)
-            # Check if it's a default file being modified
-            current_dir = self.filesystem.get_current_directory()
-            is_default = ('files' in current_dir and 
-                         self.filename in current_dir['files'] and 
-                         full_path not in self.filesystem.user_deleted_files)
-            
-            if full_path in self.filesystem.user_created_files or not is_default:
-                # User created file
-                self.filesystem.user_created_files[full_path] = self.lines
+            fs = self.filesystem
+            lines = [str(x) for x in self.lines]
+            if fs.file_exists(self.path):
+                ok, error = fs.write_file(self.path, lines, append=False)
             else:
-                # Modifying a default file
-                self.filesystem.user_modified_files[full_path] = self.lines
-            
+                ok, error = fs.create_file(self.path, lines)
+            if not ok:
+                self.message = f"E212: Can't open file for writing ({error})"
+                return False
             self.is_modified = False
             self.message = f"Saved: {self.filename}"
             

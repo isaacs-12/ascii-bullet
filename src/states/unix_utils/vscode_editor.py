@@ -130,7 +130,9 @@ class VSCodeEditorState(BaseState):
         
         # Write file
         try:
-            # Check if file exists
+            ok, current = self.filesystem.read_file(filename)
+            if ok and [str(x) for x in current] == list(lines):
+                return  # unchanged: don't turn a default file into a user-modified copy
             if self.filesystem.file_exists(filename):
                 # Update existing file
                 self.filesystem.write_file(filename, lines, append=False)
@@ -2164,54 +2166,55 @@ class VSCodeEditorState(BaseState):
             self.terminal_input_buffer += event.unicode
     
     def _execute_terminal_command(self, command):
-        """Execute a command in the terminal"""
-        # Add to history (allow duplicates, but keep most recent)
-        # Remove if exists, then append (so most recent is at end)
-        if command in self.terminal_history:
-            self.terminal_history.remove(command)
-        self.terminal_history.append(command)
-        # Keep history limited
-        if len(self.terminal_history) > 100:
-            self.terminal_history = self.terminal_history[-100:]
-        
-        # Also save to main menu's history and persist
-        if hasattr(self.previous_state, 'command_history'):
-            if command in self.previous_state.command_history:
-                self.previous_state.command_history.remove(command)
-            self.previous_state.command_history.append(command)
-            # Save periodically (every 10 commands)
-            if len(self.previous_state.command_history) % 10 == 0:
-                self.game.save_system.save_command_history(self.previous_state.command_history)
-        
-        # Show command in output
-        prompt = self._get_terminal_prompt()
-        self.terminal_output_lines.append(f"{prompt}{command}")
-        
-        # Execute command using MainMenuState's execute_command
-        if hasattr(self.previous_state, 'execute_command'):
-            # Capture output by temporarily replacing add_output
-            original_add_output = self.previous_state.add_output
-            captured_lines = []
-            
-            def terminal_add_output(text):
-                """Capture output to terminal"""
-                captured_lines.append(text)
-                self.terminal_output_lines.append(text)
-            
-            # Replace add_output temporarily
-            self.previous_state.add_output = terminal_add_output
-            try:
-                self.previous_state.execute_command(command)
-            finally:
-                # Restore original add_output
-                self.previous_state.add_output = original_add_output
-        else:
-            # Fallback: just echo the command
+        """Run a command through the main shell, capturing output in this panel."""
+        shell = getattr(self.previous_state, "shell", None)
+        self.terminal_output_lines.append(f"{self._get_terminal_prompt()}{command}")
+        if shell is None:
             self.terminal_output_lines.append(f"Command: {command}")
-        
+        else:
+            original_ui = shell.ui
+            shell.ui = _EmbeddedTerminalUI(self, original_ui)
+            try:
+                shell.submit(command)
+            finally:
+                shell.ui = original_ui
+            self.terminal_history = [h for h in shell.history[-100:]]
+
         # Auto-scroll to bottom
         self.terminal_scroll_offset = 0
         
         # Trim output if too long
         if len(self.terminal_output_lines) > 1000:
             self.terminal_output_lines = self.terminal_output_lines[-1000:]
+
+
+class _EmbeddedTerminalUI:
+    """ShellUI adapter that prints into the editor's terminal panel."""
+
+    def __init__(self, editor, main_ui):
+        self.editor = editor
+        self.main_ui = main_ui
+
+    @property
+    def width(self) -> int:
+        return max(20, self.editor.renderer.char_width - 4)
+
+    def write(self, line) -> None:
+        self.editor.terminal_output_lines.append(str(line))
+
+    def typed(self, lines, delay=30) -> None:
+        for line in lines:
+            self.write(line)
+
+    def clear(self) -> None:
+        self.editor.terminal_output_lines = []
+
+    def launch(self, factory) -> None:
+        self.editor.game.change_state(factory(self.editor.game, self.editor))
+
+    def quit(self) -> None:
+        self.main_ui.quit()
+
+    def notify(self, title, body) -> None:
+        self.main_ui.notify(title, body)
+        self.editor._show_status(f"{title}: {body}")

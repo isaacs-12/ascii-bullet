@@ -216,8 +216,7 @@ class MinesweeperState(BaseState):
         """Update game logic"""
         # Record stats when game ends
         if self.game_state in ["won", "lost"] and not self.stats_recorded:
-            playtime_seconds = time.time() - self.game_start_time
-            # TODO: Add minesweeper stats recording if needed
+            self.game.save_system.add_playtime(time.time() - self.game_start_time, "minesweeper")
             self.stats_recorded = True
     
     def render(self):

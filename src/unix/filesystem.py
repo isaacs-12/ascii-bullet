@@ -1,9 +1,86 @@
 """
-Simulated filesystem for terminal easter eggs
+Virtual filesystem for the in-game Unix machine.
+
+The default tree (files, permissions, owners) is data: ``src/data/filesystem.json``.
+Player changes are stored as an overlay (created / modified / deleted files,
+permissions, owners) so saves stay small and directories can be reset.
+
+Public file operations accept either a bare name in the current directory or
+a path (relative, absolute, ``~``-prefixed); paths are handled by temporarily
+changing into the parent directory.
 """
 
+from __future__ import annotations
+
+import copy
+import functools
 import json
+import re
+from contextlib import contextmanager
 from datetime import datetime
+from pathlib import Path
+
+HOME_PATH = ["home", "pilot", "blthll"]
+DEFAULT_FS_FILE = Path(__file__).resolve().parent.parent / "data" / "filesystem.json"
+
+
+@functools.lru_cache(maxsize=1)
+def _load_default_tree() -> dict:
+    with open(DEFAULT_FS_FILE, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _collect_owners(node: dict, path: str, owners: dict) -> None:
+    for name, child in node.get("dirs", {}).items():
+        child_path = f"{path}/{name}"
+        if "owner" in child:
+            owners[child_path] = child["owner"]
+        _collect_owners(child, child_path, owners)
+    for name, entry in node.get("files", {}).items():
+        if isinstance(entry, dict) and "owner" in entry:
+            owners[f"{path}/{name}"] = entry["owner"]
+
+
+_SYMBOLIC_MODE = re.compile(r"^([ugoa]*)([+\-=])([rwx]*)$")
+
+
+def apply_symbolic_mode(current: str, mode: str) -> str | None:
+    """Apply chmod-style symbolic clauses (``+x``, ``u+x``, ``go-w``, ``a=r,u+w``).
+
+    ``current`` is a 9-char permission string. Returns the new string, or None
+    if ``mode`` isn't a valid symbolic mode.
+    """
+    perms = list(current if len(current) == 9 else (current * 3)[:9])
+    for clause in mode.split(","):
+        m = _SYMBOLIC_MODE.match(clause)
+        if not m:
+            return None
+        who, op, what = m.groups()
+        who = who.replace("a", "ugo") or "ugo"
+        for w in set(who):
+            base = {"u": 0, "g": 3, "o": 6}[w]
+            for i, bit in enumerate("rwx"):
+                idx = base + i
+                if op == "=":
+                    perms[idx] = bit if bit in what else "-"
+                elif bit in what:
+                    perms[idx] = bit if op == "+" else "-"
+    return "".join(perms)
+
+
+def _path_aware(method):
+    """Let a cwd-relative method accept a path as its first argument."""
+
+    @functools.wraps(method)
+    def wrapper(self, name, *args, **kwargs):
+        if isinstance(name, str) and ("/" in name.rstrip("/") or name.startswith("~")):
+            with self._in_parent(name) as base:
+                if base is None:
+                    return self._missing_parent_result(method.__name__, name)
+                return method(self, base, *args, **kwargs)
+        return method(self, name, *args, **kwargs)
+
+    return wrapper
 
 
 class VirtualFileSystem:
@@ -103,43 +180,11 @@ class VirtualFileSystem:
         return "rwxrwxrwx"
     
     def _get_default_file_owners(self):
-        """
-        Define file ownership for the default filesystem.
-        Files not listed are owned by the current user (pilot).
-        
-        Returns:
-            dict: path -> owner username
-        """
-        return {
-            # System files owned by root
-            '/system': 'root',
-            '/system/core': 'root',
-            '/system/core/init.py': 'root',
-            # Systemd directories owned by root
-            '/usr': 'root',
-            '/usr/lib': 'root',
-            '/usr/lib/systemd': 'root',
-            '/usr/lib/systemd/system': 'root',
-            # Systemd unit files owned by root
-            '/usr/lib/systemd/system/blthll.service': 'root',
-            '/usr/lib/systemd/system/network.service': 'root',
-            '/usr/lib/systemd/system/sshd.service': 'root',
-            '/usr/lib/systemd/system/laser.service': 'root',
-            '/usr/lib/systemd/system/shield.service': 'root',
-            '/usr/lib/systemd/system/cooler.service': 'root',
-            # System directories
-            '/var': 'root',
-            '/var/log': 'root',
-            '/bin': 'root',
-            '/usr/local': 'root',
-            '/usr/local/deprecated': 'root',
-            '/run': 'root',
-            '/run/systemd': 'root',
-            '/run/systemd/system': 'root',
-            '/etc/systemd': 'root',
-            '/etc/systemd/system': 'root',
-        }
-    
+        """Owners declared in filesystem.json. Unlisted paths belong to the current user."""
+        owners: dict[str, str] = {}
+        _collect_owners(_load_default_tree(), "", owners)
+        return owners
+
     def _initialize_default_timestamps(self):
         """Initialize default timestamps for all existing files in the filesystem"""
         # Default timestamp (game start time)
@@ -201,550 +246,112 @@ class VirtualFileSystem:
             }
         self.file_timestamps[full_path][timestamp_type] = now
     
-    def _make_file(self, name, content, permissions=None):
-        """
-        Create a file entry for the filesystem structure.
-        
-        Args:
-            name: Filename
-            content: File content (list of strings or single string)
-            permissions: Optional permission string (3 or 9 chars). Defaults to 'rwxrwxrwx'
-            
-        Returns:
-            dict: File entry with 'content' and optionally 'permissions'
-        """
-        if permissions is None:
-            permissions = 'rwxrwxrwx'
-        # Normalize content to list
-        if isinstance(content, str):
-            content = [content]
-        return {
-            'content': content,
-            'permissions': permissions
-        }
-    
-    def _make_dir(self, name, files=None, dirs=None, permissions=None):
-        """
-        Create a directory entry for the filesystem structure.
-        
-        Args:
-            name: Directory name
-            files: Optional dict of {filename: file_entry}
-            dirs: Optional dict of {dirname: dir_entry}
-            permissions: Optional permission string (3 or 9 chars). Defaults to 'rwxrwxrwx'
-            
-        Returns:
-            dict: Directory entry with 'dirs', 'files', and optionally 'permissions' keys
-        """
-        result = {}
-        if dirs:
-            result['dirs'] = dirs
-        if files:
-            result['files'] = files
-        if permissions is not None:
-            result['permissions'] = permissions
-        return result
-    
     def _get_default_filesystem(self):
-        """Get the default read-only filesystem structure"""
-        # Build filesystem using helper functions for clarity
-        secret_dir = self._make_dir('secret', files={
-            'cheat_codes.txt': self._make_file('cheat_codes.txt', [
-                "SUPER SECRET CHEAT CODES",
-                "=======================",
-                "Up Up Down Down Left Right Left Right B A",
-            ]),
-            'developer_notes.txt': self._make_file('developer_notes.txt', [
-                "TODO: System running slow after installing some packages -- figure out why..."
-            ]),
-            'admin_notes.txt': self._make_file('admin_notes.txt', [
-                    "ADMIN NOTES",
-                    "===========",
-                    "",
-                    "I tried to edit the laser service to lower the power, but I don't have",
-                    "write access to /usr/lib/systemd/system/.",
-                    "",
-                    "I heard you can override settings by making",
-                    "a directory ending in .d.",
-                ]),
-        })
-        
-        data_dir = self._make_dir('data', 
-            dirs={'secret': secret_dir},
-            files={
-                'highscores.txt': self._make_file('highscores.txt', [
-                    "DEV HIGH SCORES",
-                    "===========",
-                    "1. PLAYER1 - 999999",
-                    "2. HACKER  - 123456",
-                    "3. WALLY   - 000042"
-                ], permissions='r--------')  # Read-only
-            }
-        )
+        """Fresh copy of the default tree from filesystem.json (top-level dirs)."""
+        return copy.deepcopy(_load_default_tree()["dirs"])
 
-        set_dir = self._make_dir('set',
-            files={
-                'card_1.dat': self._make_file('card_1.dat', [], permissions='rwx------'),
-                'card_2.dat': self._make_file('card_2.dat', [], permissions='rwx------'), 
-                'card_3.dat': self._make_file('card_3.dat', [], permissions='------rwx'),
-                'help.txt': self._make_file('help.txt', [
-                    "A set is defined as three cards that, for each of the available attributes, either are all the same or all different.",
-                    "In the standard card game, the attributes are quantity, shape, shading, and color.",
-                    "Hint: rwx",
-                ], permissions='r--------'),
-            }
-        )
-
-        asteroids_dir = self._make_dir('asteroids',
-            files={}
-        )
-
-        galaga_dir = self._make_dir('galaga',
-            files={}
-        )
-
-        oregon_dir = self._make_dir('oregon',
-            files={}
-        )
-
-        minesweeper_dir = self._make_dir('minesweeper',
-            files={
-                'help.txt': self._make_file('help.txt', [
-                    "Minesweeper is all about gathering intel on what can't yet be seen.",
-                    "Believe it or not, everything you need is already here..."
-                ]),
-                '.node_0_0': self._make_file('.node_0_0', [], permissions='rwx------'),
-                '.node_0_1': self._make_file('.node_0_1', [1], permissions='rwx------'),
-                '.node_0_2': self._make_file('.node_0_2', [1], permissions='rwx------'),
-                '.node_1_0': self._make_file('.node_1_0', [1], permissions='rwx------'),
-                '.node_1_1': self._make_file('.node_1_1', [11], permissions='rwx------'),
-                '.node_1_2': self._make_file('.node_1_2', [], permissions='rwx------'),
-                '.node_2_0': self._make_file('.node_2_0', [], permissions='rwx------'),
-                '.node_2_1': self._make_file('.node_2_1', [11], permissions='rwx------'),
-                '.node_2_2': self._make_file('.node_2_2', [1], permissions='rwx------'),
-                'helper.py': self._make_file('helper.py', [
-                    "for f in os.listdir():",
-                    "    print(f'{f}: {os.path.getsize(f)} bytes')",
-                ], permissions='rwx------'),
-            }
-        )
-
-        games_dir = self._make_dir('games',
-            dirs={
-                'set': set_dir,
-                'asteroids': asteroids_dir,
-                'galaga': galaga_dir,
-                'oregon': oregon_dir,
-                'minesweeper': minesweeper_dir,
-            },
-            files={}
-        )
-        
-        blthll_dir = self._make_dir('blthll',
-            dirs={
-                'data': data_dir,
-                'games': games_dir,
-            },
-            files={
-                'readme.txt': self._make_file('readme.txt', [
-                    "Welcome to BLTHLL",
-                    "",
-                    "Hints:",
-                    "- Try exploring with 'ls' and 'cd'",
-                    "- Type 'help' to see available commands",
-                ]),
-                'manual.txt': self._make_file('manual.txt', [
-                    "SURVIVAL MANUAL",
-                    "===============",
-                    "Step 1: Don't get hit",
-                    "Step 2: See step 1",
-                    "Step 3: There is no step 3",
-                    "",
-                    "SYSTEM COMMANDS",
-                    "===============",
-                    "top - Interactive process monitor (q to quit)",
-                    "ps - Static process list",
-                    "kill <pid> - Terminate a process by PID",
-                    "",
-                    "Tip: Watch for processes with high CPU usage.",
-                    "Something might be draining system resources..."
-                ]),
-                'hello_world.py': self._make_file('hello_world.py', [
-                    "# Simple test script",
-                    "print('Hello, World!')",
-                ], permissions='rwx------')  # Read-write for user only
-            }
-        )
-        
-        pilot_dir = self._make_dir('pilot',
-            dirs={'blthll': blthll_dir},
-            files={}
-        )
-        
-        home_dir = self._make_dir('home',
-            dirs={'pilot': pilot_dir},
-            files={}
-        )
-        
-        etc_dir = self._make_dir('etc',
-            dirs={
-                'systemd': self._make_dir('systemd',
-                    dirs={
-                        'system': self._make_dir('system', files={})
-                    }
-                )
-            },
-            files={
-                'motd': self._make_file('motd', [
-                    "Welcome to BLTHLL Terminal System",
-                    "Unauthorized access will result in more bullets."
-                ])
-            }
-        )
-        
-        # Create /usr/lib/systemd/system/ directory structure with default unit files
-        # Systemd unit files should be readable by all, writable only by root
-        systemd_system_dir = self._make_dir('system',
-            files={
-                'blthll.service': self._make_file('blthll.service', [
-                    "[Unit]",
-                    "Description=BLTHLL Terminal Service",
-                    "After=network.target",
-                    "",
-                    "[Service]",
-                    "Type=simple",
-                    "ExecStart=/usr/bin/blthll",
-                    "Restart=on-failure",
-                    "",
-                    "[Install]",
-                    "WantedBy=multi-user.target"
-                ], permissions='rw-r--r--'),  # Readable by all, writable by owner (root)
-                'network.service': self._make_file('network.service', [
-                    "[Unit]",
-                    "Description=Network Service",
-                    "After=network-pre.target",
-                    "",
-                    "[Service]",
-                    "Type=oneshot",
-                    "RemainAfterExit=yes",
-                    "",
-                    "[Install]",
-                    "WantedBy=multi-user.target"
-                ], permissions='rw-r--r--'),  # Readable by all, writable by owner (root)
-                'sshd.service': self._make_file('sshd.service', [
-                    "[Unit]",
-                    "Description=OpenSSH Server",
-                    "After=network.target",
-                    "",
-                    "[Service]",
-                    "Type=notify",
-                    "ExecStart=/usr/sbin/sshd -D",
-                    "Restart=on-failure",
-                    "",
-                    "[Install]",
-                    "WantedBy=multi-user.target"
-                ], permissions='rw-r--r--'),  # Readable by all, writable by owner (root)
-                # Boss puzzle services
-                'laser.service': self._make_file('laser.service', [
-                    "[Unit]",
-                    "Description=Doomsday Device",
-                    "Requires=cooler.service",
-                    "After=cooler.service",
-                    "",
-                    "[Service]",
-                    "Type=oneshot",
-                    "ExecStart=/bin/true",
-                    "",
-                    "[Install]",
-                    "WantedBy=multi-user.target"
-                ], permissions='rw-r--r--'),
-                'shield.service': self._make_file('shield.service', [
-                    "[Unit]",
-                    "Description=Defensive Barrier",
-                    "Conflicts=laser.service",
-                    "",
-                    "[Service]",
-                    "Type=oneshot",
-                    "ExecStart=/bin/true",
-                    "",
-                    "[Install]",
-                    "WantedBy=multi-user.target"
-                ], permissions='rw-r--r--'),
-                'cooler.service': self._make_file('cooler.service', [
-                    "[Unit]",
-                    "Description=Cooling System",
-                    "",
-                    "[Service]",
-                    "Type=oneshot",
-                    "ExecStart=/bin/true",
-                    "",
-                    "[Install]",
-                    "WantedBy=multi-user.target"
-                ], permissions='rw-r--r--')
-            }
-        )
-        
-        # Create /usr/local/deprecated/ with broken systemctl
-        deprecated_dir = self._make_dir('deprecated',
-            files={
-                'sys_control.py': self._make_file('sys_control.py', [
-                    "#!/usr/bin/env python3",
-                    "# Broken systemctl implementation",
-                    "# This file needs to be moved to /bin/systemctl and made executable",
-                    "",
-                    "import sys",
-                    "print('systemctl: command not found')",
-                    "sys.exit(1)",
-                ], permissions='rw-r--r--')
-            }
-        )
-        
-        local_dir = self._make_dir('local',
-            dirs={'deprecated': deprecated_dir}
-        )
-        
-        usr_dir = self._make_dir('usr',
-            dirs={
-                'lib': self._make_dir('lib',
-                    dirs={
-                        'systemd': self._make_dir('systemd',
-                            dirs={
-                                'system': systemd_system_dir
-                            }
-                        )
-                    }
-                ),
-                'local': local_dir
-            }
-        )
-        
-        # Create /var/log/ with boot.log
-        var_dir = self._make_dir('var',
-            dirs={
-                'log': self._make_dir('log',
-                    files={
-                        'boot.log': self._make_file('boot.log', [
-                            "[OK] Started systemd",
-                            "[OK] Started network.service",
-                            "[FAILED] Failed to start Orbital Laser.",
-                            "See 'systemctl status laser.service' for details.",
-                            "[DEPEND] Dependency failed for Cooling System.",
-                            "[OK] Started blthll.service",
-                        ], permissions='r--r--r--')  # Read-only log file
-                    }
-                )
-            }
-        )
-        
-        # Create /bin directory (for systemctl binary)
-        bin_dir = self._make_dir('bin', files={})
-        
-        # Create /run/systemd/system/ directory structure
-        run_dir = self._make_dir('run',
-            dirs={
-                'systemd': self._make_dir('systemd',
-                    dirs={
-                        'system': self._make_dir('system', files={})
-                    }
-                )
-            }
-        )
-        
-        core_dir = self._make_dir('core',
-            files={
-                'init.py': self._make_file('init.py', [
-                    "#!/usr/bin/env python3",
-                    "# BLTHLL System Initialization Script",
-                    "# WARNING: This file is owned by root",
-                    "# Modifications require elevated privileges",
-                    "",
-                    "def initialize_system():",
-                    "    print('Initializing BLTHLL core systems...')",
-                    "    print('[OK] All systems operational')",
-                    "",
-                    "if __name__ == '__main__':",
-                    "    initialize_system()",
-                ], permissions='---------')  # No permissions
-            }
-        )
-        
-        system_dir = self._make_dir('system',
-            dirs={'core': core_dir},
-            files={}
-        )
-        
-        # Return top-level structure
-        return {
-            'home': home_dir,
-            'etc': etc_dir,
-            'usr': usr_dir,
-            'run': run_dir,
-            'var': var_dir,
-            'bin': bin_dir,
-            'system': system_dir
-        }
-    
-    def get_current_directory(self):
-        """Get the current directory object"""
-        current = self.filesystem
-        for i, dir_name in enumerate(self.current_path):
-            if i == 0:
-                # First level: directly in filesystem
-                if dir_name in current:
-                    current = current[dir_name]
-                else:
-                    return self.filesystem
+    # ------------------------------------------------------------ paths
+    def normalize(self, path: str) -> list[str]:
+        """Resolve ``path`` against the cwd into absolute path components."""
+        path = path.strip()
+        if path == "~" or path.startswith("~/"):
+            parts = HOME_PATH + path[2:].split("/")
+        elif path.startswith("/"):
+            parts = path.split("/")
+        else:
+            parts = self.current_path + path.split("/")
+        out: list[str] = []
+        for part in parts:
+            if part in ("", "."):
+                continue
+            if part == "..":
+                if out:
+                    out.pop()
             else:
-                # Subsequent levels: navigate through 'dirs'
-                if 'dirs' in current and dir_name in current['dirs']:
-                    current = current['dirs'][dir_name]
-                else:
-                    return self.filesystem
-        return current
-    
+                out.append(part)
+        return out
+
+    def abspath(self, path: str) -> str:
+        return "/" + "/".join(self.normalize(path))
+
+    @contextmanager
+    def _in_parent(self, path: str):
+        """chdir into ``path``'s parent for the duration; yields the basename or None."""
+        parts = self.normalize(path)
+        saved = self.current_path[:]
+        if not parts or not self._directory_exists(parts[:-1]):
+            yield None
+            return
+        self.current_path = parts[:-1]
+        try:
+            yield parts[-1]
+        finally:
+            self.current_path = saved
+
+    @staticmethod
+    def _missing_parent_result(method_name: str, name: str):
+        if method_name in ("file_exists", "check_permission"):
+            return False
+        if method_name in ("get_permissions",):
+            return None
+        if method_name == "get_file_owner":
+            return None
+        return (False, f"{name}: No such file or directory")
+
+    def _resolve_destination(self, source: str, destination: str) -> str:
+        """Absolute destination path; a directory destination keeps the source's name."""
+        base = source.rstrip("/").rsplit("/", 1)[-1]
+        if destination.endswith("/") or self.is_directory_path(destination):
+            return self.abspath(destination).rstrip("/") + "/" + base
+        return self.abspath(destination)
+
+    def is_directory_path(self, path: str) -> bool:
+        return self._directory_exists(self.normalize(path))
+
+    def exists(self, path: str) -> bool:
+        return self.is_directory_path(path) or self.file_exists(path)
+
+    def _node_at(self, parts):
+        """Default-tree node for absolute ``parts`` (root is ``{'dirs': tree}``), or None."""
+        node = {"dirs": self.filesystem}
+        for name in parts:
+            node = node.get("dirs", {}).get(name)
+            if node is None:
+                return None
+        return node
+
+    def get_current_directory(self):
+        """Default-tree node for the cwd. User-created directories have no default node."""
+        node = self._node_at(self.current_path)
+        return node if node is not None else {}
+
+    def _child(self, name: str) -> str:
+        """Absolute path of ``name`` inside the cwd (root-safe: no '//')."""
+        return self.get_pwd().rstrip('/') + '/' + name
+
     def get_pwd(self):
         """Get current working directory as string"""
         return '/' + '/'.join(self.current_path)
     
     def change_directory(self, path):
-        """
-        Change directory
-        
-        Args:
-            path: Directory path (e.g., 'data', '..', '/home/pilot')
-            
-        Returns:
-            tuple: (success: bool, error_message: str or None)
-        """
-        if path == '..':
-            # Go to parent directory
-            if len(self.current_path) > 0:
-                self.current_path.pop()
-                return (True, None)
-            else:
-                return (False, "Already at root directory")
-        
-        elif path == '/':
-            # Go to root directory
-            self.current_path = []
+        """Change directory. Returns (success, error_message)."""
+        if not path:
+            self.current_path = HOME_PATH[:]
             return (True, None)
-        
-        elif path == '~':
-            # Go to home
-            self.current_path = ['home', 'pilot', 'blthll']
+        target = self.normalize(path)
+        if self._directory_exists(target):
+            self.current_path = target
             return (True, None)
-        
-        elif path.startswith('/'):
-            # Absolute path
-            parts = [p for p in path.split('/') if p]
-            if self._directory_exists(parts):
-                self.current_path = parts
-                return (True, None)
-            else:
-                return (False, f"cd: {path}: No such directory")
-        
-        else:
-            # Relative path - may contain slashes (e.g., "home/pilot/")
-            # Remove trailing slash if present
-            path = path.rstrip('/')
-            # Split into components
-            path_components = [p for p in path.split('/') if p]
-            if not path_components:
-                # Empty path after splitting (e.g., just "/" or "")
-                return (True, None)
-            
-            # Build new path by appending components
-            new_path = self.current_path + path_components
-            
-            # Handle ".." in the path components
-            final_path = []
-            for component in new_path:
-                if component == '..':
-                    if final_path:
-                        final_path.pop()
-                else:
-                    final_path.append(component)
-            
-            if self._directory_exists(final_path):
-                self.current_path = final_path
-                return (True, None)
-            else:
-                return (False, f"cd: {path}: No such directory")
-    
+        if self.file_exists(path):
+            return (False, f"cd: {path}: Not a directory")
+        return (False, f"cd: {path}: No such file or directory")
+
     def _directory_exists(self, path_list):
-        """Check if a directory path exists"""
-        # Build full path string to check user_created_dirs
-        if path_list:
-            full_path = '/' + '/'.join(path_list)
-            # Ensure trailing slash for directory comparison
-            if not full_path.endswith('/'):
-                full_path = full_path + '/'
-            # Check user-created directories first
-            if full_path in self.user_created_dirs:
-                return True
-        
-        # Check default filesystem structure
-        current = self.filesystem
-        for i, dir_name in enumerate(path_list):
-            if i == 0:
-                # First level: directly in filesystem
-                if dir_name in current:
-                    current = current[dir_name]
-                else:
-                    return False
-            else:
-                # Subsequent levels: navigate through 'dirs'
-                if 'dirs' in current and dir_name in current['dirs']:
-                    current = current['dirs'][dir_name]
-                else:
-                    return False
-        return True
-    
-    def read_file(self, filename):
-        """
-        Read a file from the current directory
-        
-        Args:
-            filename: Name of the file to read
-            
-        Returns:
-            tuple: (success: bool, content: list of strings or error message)
-        """
-        current_dir = self.get_current_directory()
-        full_path = self.get_pwd() + '/' + filename
-        
-        # Check user-created/modified files first
-        if full_path in self.user_created_files:
-            self._update_timestamp(full_path, 'access')
-            content = self.user_created_files[full_path]
-            if isinstance(content, list):
-                return (True, content)
-            else:
-                return (True, [content])
-        elif full_path in self.user_modified_files:
-            self._update_timestamp(full_path, 'access')
-            content = self.user_modified_files[full_path]
-            if isinstance(content, list):
-                return (True, content)
-            else:
-                return (True, [content])
-        
-        # Check default files
-        if 'files' in current_dir and filename in current_dir['files']:
-            # Check if file has been deleted
-            if full_path in self.user_deleted_files:
-                return (False, f"cat: {filename}: No such file")
-            # Check read permission for existing default files
-            if not self.check_permission(filename, 'r'):
-                return (False, f"Permission denied: '{filename}'")
-            # Update access time
-            self._update_timestamp(full_path, 'access')
-            file_entry = current_dir['files'][filename]
-            content = self._extract_file_content(file_entry)
-            return (True, content)
-        else:
-            return (False, f"cat: {filename}: No such file")
-    
+        """True if ``path_list`` names a default or user-created directory."""
+        if path_list and "/" + "/".join(path_list) + "/" in self.user_created_dirs:
+            return True
+        return self._node_at(path_list) is not None
+
     # === Mutable Filesystem Operations ===
     
     def _get_user_files_size(self):
@@ -764,6 +371,7 @@ class VirtualFileSystem:
                 total += len(str(content))
         return total
     
+    @_path_aware
     def file_exists(self, filename):
         """
         Check if a file exists in the current directory
@@ -774,7 +382,7 @@ class VirtualFileSystem:
         Returns:
             bool: True if file exists, False otherwise
         """
-        full_path = self.get_pwd() + '/' + filename
+        full_path = self._child(filename)
         
         # Check if it's been deleted
         if full_path in self.user_deleted_files:
@@ -795,6 +403,7 @@ class VirtualFileSystem:
         
         return False
     
+    @_path_aware
     def create_file(self, filename, content=""):
         """
         Create a new file in current directory
@@ -814,7 +423,7 @@ class VirtualFileSystem:
         if self._get_user_files_size() + content_size > self.MAX_USER_FILES_SIZE:
             return (False, "File size limit exceeded (16KB max for user files)")
         
-        full_path = self.get_pwd() + '/' + filename
+        full_path = self._child(filename)
         self.user_created_files[full_path] = content if content else []
         # Set initial timestamps for new file
         now = datetime.now().isoformat()
@@ -825,6 +434,7 @@ class VirtualFileSystem:
         }
         return (True, None)
     
+    @_path_aware
     def write_file(self, filename, content, append=False):
         """
         Write content to a file (overwrites or appends)
@@ -837,7 +447,7 @@ class VirtualFileSystem:
         Returns:
             tuple: (success, error_message or None)
         """
-        full_path = self.get_pwd() + '/' + filename
+        full_path = self._child(filename)
         
         # Check write permission and ownership for existing files
         if self.file_exists(filename):
@@ -894,6 +504,7 @@ class VirtualFileSystem:
         
         return (True, None)
     
+    @_path_aware
     def delete_file(self, filename):
         """
         Delete a file from current directory
@@ -904,7 +515,7 @@ class VirtualFileSystem:
         Returns:
             tuple: (success, error_message or None)
         """
-        full_path = self.get_pwd() + '/' + filename
+        full_path = self._child(filename)
         
         # Check write permission and ownership (needed to delete)
         if not self.check_permission(filename, 'w'):
@@ -928,6 +539,7 @@ class VirtualFileSystem:
         else:
             return (False, f"File '{filename}' not found")
     
+    @_path_aware
     def create_directory(self, dirname):
         """
         Create a new directory in current location
@@ -942,7 +554,7 @@ class VirtualFileSystem:
         if 'dirs' in current_dir and dirname in current_dir['dirs']:
             return (False, f"Directory '{dirname}' already exists")
         
-        full_path = self.get_pwd() + '/' + dirname
+        full_path = self._child(dirname)
         # Ensure trailing slash for directories
         if not full_path.endswith('/'):
             full_path = full_path + '/'
@@ -960,6 +572,7 @@ class VirtualFileSystem:
         }
         return (True, None)
     
+    @_path_aware
     def delete_directory(self, dirname):
         """
         Delete an empty user-created directory
@@ -970,7 +583,7 @@ class VirtualFileSystem:
         Returns:
             tuple: (success, error_message or None)
         """
-        full_path = self.get_pwd() + '/' + dirname
+        full_path = self._child(dirname)
         # Ensure trailing slash to match how user_created_dirs stores paths
         full_path_with_slash = full_path if full_path.endswith('/') else full_path + '/'
 
@@ -1066,17 +679,18 @@ class VirtualFileSystem:
             return True
 
         # Check user-created directories
-        full_path = self.get_pwd() + '/' + name + '/'
+        full_path = self._child(name + '/')
         if full_path in self.user_created_dirs:
-            return True
-
-        # Check root-level dirs if at root
-        if len(self.current_path) == 0 and name in self.filesystem:
             return True
 
         return False
 
     def copy_file(self, source, destination):
+        """Copy file; ``destination`` may be a path or an existing directory."""
+        return self._copy_file(source, self._resolve_destination(source, destination))
+
+    @_path_aware
+    def _copy_file(self, source, destination):
         """
         Copy a file from source to destination.
 
@@ -1104,7 +718,7 @@ class VirtualFileSystem:
         # Resolve destination
         if '/' in destination:
             dest_parts = destination.rsplit('/', 1)
-            dest_dir = dest_parts[0]
+            dest_dir = dest_parts[0] or '/'
             dest_filename = dest_parts[1] if dest_parts[1] else source
 
             saved = self.current_path[:]
@@ -1119,7 +733,7 @@ class VirtualFileSystem:
 
             result = self.create_file(dest_filename, content)
             if result[0] and source_perms and source_perms != "rwxrwxrwx":
-                dest_full = self.get_pwd() + '/' + dest_filename
+                dest_full = self._child(dest_filename)
                 self.file_permissions[dest_full] = source_perms
             self.current_path = saved
             return result
@@ -1129,10 +743,11 @@ class VirtualFileSystem:
 
             result = self.create_file(destination, content)
             if result[0] and source_perms and source_perms != "rwxrwxrwx":
-                dest_full = self.get_pwd() + '/' + destination
+                dest_full = self._child(destination)
                 self.file_permissions[dest_full] = source_perms
             return result
 
+    @_path_aware
     def delete_directory_recursive(self, dirname):
         """
         Recursively delete a user-created directory and all its contents.
@@ -1144,7 +759,7 @@ class VirtualFileSystem:
         Returns:
             tuple: (success, error_message or None)
         """
-        full_path = self.get_pwd() + '/' + dirname
+        full_path = self._child(dirname)
         full_path_with_slash = full_path if full_path.endswith('/') else full_path + '/'
 
         if full_path_with_slash not in self.user_created_dirs:
@@ -1205,6 +820,7 @@ class VirtualFileSystem:
         finally:
             self.current_path = saved
 
+    @_path_aware
     def get_permissions(self, filename):
         """
         Get file or directory permissions
@@ -1217,7 +833,7 @@ class VirtualFileSystem:
         """
         # Normalize directory paths (remove trailing slash for lookup)
         name = filename.rstrip('/')
-        full_path = self.get_pwd() + '/' + name
+        full_path = self._child(name)
         
         # Check if it's a directory
         is_dir = False
@@ -1257,6 +873,7 @@ class VirtualFileSystem:
         # For user-created/modified files and directories, default to 'rwxrwxrwx'
         return "rwxrwxrwx"
     
+    @_path_aware
     def get_file_owner(self, filename):
         """
         Get the owner of a file or directory
@@ -1274,7 +891,7 @@ class VirtualFileSystem:
         if name == '.' or name == '':
             full_path = self.get_pwd()
         else:
-            full_path = self.get_pwd() + '/' + name
+            full_path = self._child(name)
         
         # Normalize double slashes at root
         full_path = full_path.replace('//', '/')
@@ -1303,6 +920,7 @@ class VirtualFileSystem:
         """Get the current username"""
         return self.current_user
     
+    @_path_aware
     def set_permissions(self, filename, permissions):
         """
         Set file or directory permissions (chmod)
@@ -1316,7 +934,7 @@ class VirtualFileSystem:
         """
         # Normalize directory paths (remove trailing slash for storage)
         name = filename.rstrip('/')
-        full_path = self.get_pwd() + '/' + name
+        full_path = self._child(name)
         
         # Check if file or directory exists
         current_dir = self.get_current_directory()
@@ -1335,7 +953,14 @@ class VirtualFileSystem:
             return (False, f"chmod: changing permissions of '{filename}': Operation not permitted")
         
         # Parse permissions
-        if permissions.isdigit():
+        if not permissions.isdigit() and _SYMBOLIC_MODE.match(permissions.split(",")[0]) \
+                and not (len(permissions) in (3, 9) and all(c in 'rwx-' for c in permissions)):
+            current = self.get_permissions(filename) or "rw-r--r--"
+            new_perms = apply_symbolic_mode(current, permissions)
+            if new_perms is None:
+                return (False, f"chmod: invalid mode: '{permissions}'")
+            permissions = new_perms
+        elif permissions.isdigit():
             # Octal format (e.g., "644", "755", "0755", "7", "777")
             try:
                 # Handle 4-digit octal (leading 0) or 3-digit or single digit
@@ -1395,6 +1020,7 @@ class VirtualFileSystem:
         self._update_timestamp(full_path, 'change')
         return (True, None)
     
+    @_path_aware
     def check_permission(self, filename, permission):
         """
         Check if user has a specific permission on a file
@@ -1452,6 +1078,11 @@ class VirtualFileSystem:
         return perms[check_index] == permission
     
     def move_file(self, source, destination):
+        """Move file; ``destination`` may be a path or an existing directory."""
+        return self._move_file(source, self._resolve_destination(source, destination))
+
+    @_path_aware
+    def _move_file(self, source, destination):
         """
         Move or rename a file (including default system files)
         
@@ -1463,7 +1094,7 @@ class VirtualFileSystem:
             tuple: (success, error_message or None)
         """
         current_pwd = self.get_pwd()
-        source_full = current_pwd + '/' + source
+        source_full = self._child(source)
         
         # Check if source exists
         if not self.file_exists(source):
@@ -1483,7 +1114,7 @@ class VirtualFileSystem:
         if '/' in destination:
             # Destination includes directory path
             dest_parts = destination.rsplit('/', 1)
-            dest_dir = dest_parts[0]
+            dest_dir = dest_parts[0] or '/'
             dest_filename = dest_parts[1]
             
             # Validate destination directory exists
@@ -1493,7 +1124,7 @@ class VirtualFileSystem:
                 self.current_path = old_path
                 return (False, f"Destination directory not found: {dest_dir}")
             
-            dest_full = self.get_pwd() + '/' + dest_filename
+            dest_full = self._child(dest_filename)
             self.current_path = old_path
             
             # Check if destination file already exists
@@ -1506,7 +1137,7 @@ class VirtualFileSystem:
                 return (False, f"Destination file already exists: {destination}")
         else:
             # Destination is in current directory (rename)
-            dest_full = current_pwd + '/' + destination
+            dest_full = self._child(destination)
             if self.file_exists(destination):
                 return (False, f"Destination file already exists: {destination}")
         
@@ -1593,15 +1224,7 @@ class VirtualFileSystem:
         """
         current_dir = self.get_current_directory()
         contents = []
-        current_path = self.get_pwd()
-        
-        # Special case: at root directory
-        if len(self.current_path) == 0:
-            # At root, directories are top-level keys
-            for dir_name in sorted(current_dir.keys()):
-                if show_hidden or not dir_name.startswith('.'):
-                    contents.append(f"{dir_name}/")
-            return contents
+        current_path = self.get_pwd().rstrip('/')
         
         # Add default directories
         if 'dirs' in current_dir:
@@ -1613,11 +1236,10 @@ class VirtualFileSystem:
         
         # Add user-created directories
         for dir_path in sorted(self.user_created_dirs):
-            # Check if it's a direct child of current directory
-            if '/' in dir_path:
-                parent = dir_path.rsplit('/', 1)[0]
+            # Stored with a trailing slash ("/a/b/"); compare the parent of "/a/b".
+            parent, _, dir_name = dir_path.rstrip('/').rpartition('/')
+            if dir_name:
                 if parent == current_path:
-                    dir_name = dir_path.rsplit('/', 1)[1]
                     if show_hidden or not dir_name.startswith('.'):
                         if f"{dir_name}/" not in contents:
                             contents.append(f"{dir_name}/")
@@ -1652,9 +1274,10 @@ class VirtualFileSystem:
         
         return contents
     
+    @_path_aware
     def read_file(self, filename):
         """Read a file (checks user files first, then defaults)"""
-        full_path = self.get_pwd() + '/' + filename
+        full_path = self._child(filename)
         
         # Check if file has been deleted
         if full_path in self.user_deleted_files:

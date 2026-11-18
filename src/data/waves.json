@@ -1,0 +1,771 @@
+{
+ "world": {
+  "width": 96,
+  "height": 92
+ },
+ "player": {
+  "speed": 40,
+  "focus_speed": 16,
+  "hitbox": 0.7,
+  "graze": 3.6,
+  "lives": 3,
+  "bombs": 2,
+  "max_bombs": 5,
+  "grazes_per_bomb": 45,
+  "iframes": 2.2
+ },
+ "loop_scaling": {
+  "speed": 0.18,
+  "rate": 0.25
+ },
+ "wave_scaling": {
+  "speed": 0.025,
+  "rate": 0.04
+ },
+ "bullets": {
+  "small": {
+   "glyph": "•",
+   "radius": 0.7,
+   "color": [
+    255,
+    120,
+    120
+   ]
+  },
+  "orb": {
+   "glyph": "o",
+   "radius": 1.0,
+   "color": [
+    190,
+    130,
+    255
+   ]
+  },
+  "big": {
+   "glyph": "O",
+   "radius": 1.7,
+   "color": [
+    120,
+    200,
+    255
+   ]
+  },
+  "star": {
+   "glyph": "*",
+   "radius": 0.9,
+   "color": [
+    255,
+    230,
+    120
+   ]
+  },
+  "needle": {
+   "glyph": "|",
+   "radius": 0.6,
+   "color": [
+    255,
+    90,
+    210
+   ],
+   "directional": true
+  }
+ },
+ "enemies": {
+  "drone": {
+   "art": [
+    "<o>"
+   ],
+   "color": [
+    255,
+    110,
+    110
+   ],
+   "move": "hover",
+   "speed": 22,
+   "ammo": 6,
+   "patterns": [
+    {
+     "type": "aimed",
+     "count": 1,
+     "speed": 22,
+     "interval": 1100,
+     "bullet": "small"
+    }
+   ]
+  },
+  "fan": {
+   "art": [
+    "\\V/"
+   ],
+   "color": [
+    255,
+    170,
+    60
+   ],
+   "move": "hover",
+   "speed": 18,
+   "ammo": 5,
+   "patterns": [
+    {
+     "type": "aimed",
+     "count": 5,
+     "spread": 60,
+     "speed": 20,
+     "interval": 1500,
+     "bullet": "small"
+    }
+   ]
+  },
+  "ringer": {
+   "art": [
+    "(O)"
+   ],
+   "color": [
+    200,
+    120,
+    255
+   ],
+   "move": "hover",
+   "speed": 14,
+   "ammo": 4,
+   "patterns": [
+    {
+     "type": "ring",
+     "count": 14,
+     "speed": 16,
+     "interval": 1700,
+     "rotate": 9,
+     "bullet": "orb"
+    }
+   ]
+  },
+  "spinner": {
+   "art": [
+    "{*}"
+   ],
+   "color": [
+    90,
+    220,
+    255
+   ],
+   "move": "hover",
+   "speed": 16,
+   "ammo": 40,
+   "patterns": [
+    {
+     "type": "spiral",
+     "arms": 2,
+     "speed": 18,
+     "spin": 140,
+     "interval": 140,
+     "bullet": "small"
+    }
+   ]
+  },
+  "sniper": {
+   "art": [
+    "-=+=-"
+   ],
+   "color": [
+    255,
+    80,
+    200
+   ],
+   "move": "hover",
+   "speed": 20,
+   "ammo": 4,
+   "patterns": [
+    {
+     "type": "aimed",
+     "count": 1,
+     "speed": 46,
+     "interval": 1900,
+     "bullet": "needle",
+     "telegraph": 650
+    }
+   ]
+  },
+  "weaver": {
+   "art": [
+    "~w~"
+   ],
+   "color": [
+    140,
+    255,
+    140
+   ],
+   "move": "weave",
+   "speed": 16,
+   "ammo": 30,
+   "patterns": [
+    {
+     "type": "drop",
+     "speed": 14,
+     "interval": 260,
+     "bullet": "orb"
+    }
+   ]
+  },
+  "crosser": {
+   "art": [
+    ">=>"
+   ],
+   "color": [
+    255,
+    230,
+    90
+   ],
+   "move": "cross",
+   "speed": 20,
+   "ammo": 20,
+   "patterns": [
+    {
+     "type": "drop",
+     "speed": 20,
+     "interval": 300,
+     "bullet": "small",
+     "spread": 30,
+     "count": 2
+    }
+   ]
+  }
+ },
+ "waves": [
+  {
+   "spawns": [
+    {
+     "enemy": "drone",
+     "count": 3,
+     "formation": "line",
+     "delay": 0
+    }
+   ]
+  },
+  {
+   "spawns": [
+    {
+     "enemy": "drone",
+     "count": 4,
+     "formation": "line",
+     "delay": 0
+    },
+    {
+     "enemy": "fan",
+     "count": 1,
+     "formation": "line",
+     "delay": 2500
+    }
+   ]
+  },
+  {
+   "spawns": [
+    {
+     "enemy": "ringer",
+     "count": 2,
+     "formation": "line",
+     "delay": 0
+    },
+    {
+     "enemy": "drone",
+     "count": 3,
+     "formation": "v",
+     "delay": 2000
+    }
+   ]
+  },
+  {
+   "spawns": [
+    {
+     "enemy": "weaver",
+     "count": 2,
+     "formation": "line",
+     "delay": 0
+    },
+    {
+     "enemy": "fan",
+     "count": 2,
+     "formation": "line",
+     "delay": 1500
+    },
+    {
+     "enemy": "sniper",
+     "count": 1,
+     "formation": "line",
+     "delay": 3500
+    }
+   ]
+  },
+  {
+   "boss": "daemon"
+  },
+  {
+   "spawns": [
+    {
+     "enemy": "spinner",
+     "count": 1,
+     "formation": "line",
+     "delay": 0
+    },
+    {
+     "enemy": "drone",
+     "count": 4,
+     "formation": "v",
+     "delay": 1500
+    },
+    {
+     "enemy": "crosser",
+     "count": 2,
+     "formation": "line",
+     "delay": 3500,
+     "side": "left"
+    }
+   ]
+  },
+  {
+   "spawns": [
+    {
+     "enemy": "sniper",
+     "count": 2,
+     "formation": "line",
+     "delay": 0
+    },
+    {
+     "enemy": "ringer",
+     "count": 2,
+     "formation": "line",
+     "delay": 1200
+    },
+    {
+     "enemy": "weaver",
+     "count": 2,
+     "formation": "line",
+     "delay": 3000
+    }
+   ]
+  },
+  {
+   "spawns": [
+    {
+     "enemy": "spinner",
+     "count": 2,
+     "formation": "line",
+     "delay": 0
+    },
+    {
+     "enemy": "fan",
+     "count": 2,
+     "formation": "line",
+     "delay": 2500
+    },
+    {
+     "enemy": "crosser",
+     "count": 2,
+     "formation": "line",
+     "delay": 4500,
+     "side": "right"
+    }
+   ]
+  },
+  {
+   "spawns": [
+    {
+     "enemy": "ringer",
+     "count": 3,
+     "formation": "v",
+     "delay": 0
+    },
+    {
+     "enemy": "sniper",
+     "count": 2,
+     "formation": "line",
+     "delay": 2000
+    },
+    {
+     "enemy": "spinner",
+     "count": 1,
+     "formation": "line",
+     "delay": 4000
+    }
+   ]
+  },
+  {
+   "boss": "laser"
+  },
+  {
+   "spawns": [
+    {
+     "enemy": "spinner",
+     "count": 2,
+     "formation": "line",
+     "delay": 0
+    },
+    {
+     "enemy": "sniper",
+     "count": 3,
+     "formation": "line",
+     "delay": 2000
+    },
+    {
+     "enemy": "weaver",
+     "count": 3,
+     "formation": "line",
+     "delay": 3500
+    }
+   ]
+  },
+  {
+   "spawns": [
+    {
+     "enemy": "ringer",
+     "count": 4,
+     "formation": "line",
+     "delay": 0
+    },
+    {
+     "enemy": "fan",
+     "count": 3,
+     "formation": "v",
+     "delay": 2500
+    },
+    {
+     "enemy": "crosser",
+     "count": 3,
+     "formation": "line",
+     "delay": 4500,
+     "side": "left"
+    }
+   ]
+  },
+  {
+   "spawns": [
+    {
+     "enemy": "spinner",
+     "count": 3,
+     "formation": "v",
+     "delay": 0
+    },
+    {
+     "enemy": "sniper",
+     "count": 2,
+     "formation": "line",
+     "delay": 1500
+    },
+    {
+     "enemy": "crosser",
+     "count": 2,
+     "formation": "line",
+     "delay": 3000,
+     "side": "right"
+    }
+   ]
+  },
+  {
+   "spawns": [
+    {
+     "enemy": "weaver",
+     "count": 4,
+     "formation": "line",
+     "delay": 0
+    },
+    {
+     "enemy": "ringer",
+     "count": 3,
+     "formation": "line",
+     "delay": 2000
+    },
+    {
+     "enemy": "fan",
+     "count": 3,
+     "formation": "line",
+     "delay": 4000
+    },
+    {
+     "enemy": "sniper",
+     "count": 2,
+     "formation": "line",
+     "delay": 6000
+    }
+   ]
+  },
+  {
+   "boss": "walnut_ai"
+  }
+ ],
+ "bosses": {
+  "daemon": {
+   "name": "THE DAEMON",
+   "subtitle": "pid ???, user root, 30% cpu",
+   "art": [
+    " .-\"\"-. ",
+    "/ x  x \\",
+    "\\  ~~  /",
+    " '-..-' "
+   ],
+   "color": [
+    255,
+    70,
+    70
+   ],
+   "phases": [
+    {
+     "name": "fork()",
+     "duration": 20,
+     "move": "sway",
+     "patterns": [
+      {
+       "type": "ring",
+       "count": 18,
+       "speed": 15,
+       "interval": 1100,
+       "rotate": 10,
+       "bullet": "orb"
+      },
+      {
+       "type": "aimed",
+       "count": 3,
+       "spread": 24,
+       "speed": 24,
+       "interval": 1600,
+       "bullet": "small"
+      }
+     ]
+    },
+    {
+     "name": "Zombie Processes",
+     "duration": 22,
+     "move": "sway",
+     "patterns": [
+      {
+       "type": "ring",
+       "count": 12,
+       "speed": 22,
+       "interval": 1400,
+       "bullet": "small",
+       "stop_after": 700,
+       "aim_after": 1300,
+       "aim_speed": 26
+      }
+     ]
+    },
+    {
+     "name": "Kernel Panic",
+     "duration": 25,
+     "move": "center",
+     "patterns": [
+      {
+       "type": "spiral",
+       "arms": 4,
+       "speed": 17,
+       "spin": 95,
+       "interval": 110,
+       "bullet": "small"
+      },
+      {
+       "type": "spiral",
+       "arms": 2,
+       "speed": 13,
+       "spin": -60,
+       "interval": 220,
+       "bullet": "orb"
+      }
+     ]
+    }
+   ]
+  },
+  "laser": {
+   "name": "LASER.SERVICE",
+   "subtitle": "Description=Doomsday Device",
+   "art": [
+    "  _|_  ",
+    "=[###]=",
+    "  /|\\  "
+   ],
+   "color": [
+    255,
+    200,
+    60
+   ],
+   "phases": [
+    {
+     "name": "Requires=cooler.service",
+     "duration": 22,
+     "move": "sway",
+     "patterns": [
+      {
+       "type": "aimed",
+       "count": 1,
+       "speed": 52,
+       "interval": 700,
+       "bullet": "needle",
+       "telegraph": 500
+      },
+      {
+       "type": "rain",
+       "count": 3,
+       "speed": 16,
+       "interval": 500,
+       "bullet": "small"
+      }
+     ]
+    },
+    {
+     "name": "Dependency Cycle",
+     "duration": 24,
+     "move": "center",
+     "patterns": [
+      {
+       "type": "spiral",
+       "arms": 3,
+       "speed": 19,
+       "spin": 120,
+       "interval": 120,
+       "bullet": "small"
+      },
+      {
+       "type": "spiral",
+       "arms": 3,
+       "speed": 19,
+       "spin": -120,
+       "interval": 120,
+       "bullet": "small"
+      }
+     ]
+    },
+    {
+     "name": "Overheat",
+     "duration": 26,
+     "move": "sway",
+     "patterns": [
+      {
+       "type": "flower",
+       "count": 24,
+       "speed": 18,
+       "interval": 900,
+       "curve": 70,
+       "bullet": "orb"
+      },
+      {
+       "type": "aimed",
+       "count": 5,
+       "spread": 40,
+       "speed": 30,
+       "interval": 1300,
+       "bullet": "needle"
+      }
+     ]
+    }
+   ]
+  },
+  "walnut_ai": {
+   "name": "WALNUT AI",
+   "subtitle": "an assistant (parody) that has been 'just exploring'",
+   "art": [
+    "  ,-----.  ",
+    " ( ^   ^ ) ",
+    "  \\ ___ /  ",
+    "  /|AI |\\  "
+   ],
+   "color": [
+    200,
+    170,
+    255
+   ],
+   "phases": [
+    {
+     "name": "You're Absolutely Right!",
+     "duration": 24,
+     "move": "sway",
+     "patterns": [
+      {
+       "type": "flower",
+       "count": 30,
+       "speed": 17,
+       "interval": 800,
+       "curve": 55,
+       "bullet": "star"
+      },
+      {
+       "type": "flower",
+       "count": 30,
+       "speed": 17,
+       "interval": 800,
+       "curve": -55,
+       "bullet": "star",
+       "offset": 400
+      }
+     ]
+    },
+    {
+     "name": "Hallucination",
+     "duration": 26,
+     "move": "teleport",
+     "patterns": [
+      {
+       "type": "random",
+       "count": 6,
+       "speed": 9,
+       "interval": 220,
+       "bullet": "orb",
+       "stop_after": 900,
+       "aim_after": 1600,
+       "aim_speed": 30
+      }
+     ]
+    },
+    {
+     "name": "Context Window Overflow",
+     "duration": 26,
+     "move": "center",
+     "patterns": [
+      {
+       "type": "wall",
+       "speed": 15,
+       "interval": 1300,
+       "gap": 16,
+       "bullet": "big"
+      },
+      {
+       "type": "aimed",
+       "count": 3,
+       "spread": 18,
+       "speed": 28,
+       "interval": 1100,
+       "bullet": "small"
+      }
+     ]
+    },
+    {
+     "name": "rm -rf / (just exploring)",
+     "duration": 30,
+     "move": "center",
+     "patterns": [
+      {
+       "type": "spiral",
+       "arms": 5,
+       "speed": 16,
+       "spin": 75,
+       "interval": 130,
+       "bullet": "small"
+      },
+      {
+       "type": "ring",
+       "count": 20,
+       "speed": 12,
+       "interval": 1500,
+       "rotate": 9,
+       "bullet": "big"
+      },
+      {
+       "type": "aimed",
+       "count": 1,
+       "speed": 50,
+       "interval": 1300,
+       "bullet": "needle",
+       "telegraph": 450
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

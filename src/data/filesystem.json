@@ -1,0 +1,740 @@
+{
+  "dirs": {
+    "home": {
+      "dirs": {
+        "pilot": {
+          "dirs": {
+            "blthll": {
+              "dirs": {
+                "data": {
+                  "dirs": {
+                    "secret": {
+                      "files": {
+                        "cheat_codes.txt": {
+                          "content": [
+                            "SUPER SECRET CHEAT CODES",
+                            "=======================",
+                            "Up Up Down Down Left Right Left Right B A"
+                          ],
+                          "permissions": "rwxrwxrwx"
+                        },
+                        "developer_notes.txt": {
+                          "content": [
+                            "TODO: System running slow after installing some packages -- figure out why...",
+                            "TODO: someone keeps base64-ing their secrets and calling it encryption."
+                          ],
+                          "permissions": "rwxrwxrwx"
+                        },
+                        "admin_notes.txt": {
+                          "content": [
+                            "ADMIN NOTES",
+                            "===========",
+                            "",
+                            "I tried to edit the laser service to lower the power, but I don't have",
+                            "write access to /usr/lib/systemd/system/.",
+                            "",
+                            "I heard you can override settings by making",
+                            "a directory ending in .d."
+                          ],
+                          "permissions": "rwxrwxrwx"
+                        },
+                        ".transmission": {
+                          "content": [
+                            "SU5URVJDRVBURUQgLy8gV0FMTlVUIElORFVTVFJJRVMgLy8gRVlFUyBPTkxZClRo",
+                            "ZSBRQSB0ZWFtIGxlZnQgYSBwcmFjdGljZSBzd2l0Y2ggaW4gdGhlIGJ1bGxldCBo",
+                            "ZWxsIGJ1aWxkLgpUeXBlICdnb2Rtb2RlJyBhdCB0aGUgcHJvbXB0IHRvIHRvZ2ds",
+                            "ZSBpbnZpbmNpYmlsaXR5LgpTY29yZXMgZG9uJ3QgY291bnQgd2hpbGUgaXQncyBv",
+                            "bi4gT2J2aW91c2x5LgotLSBXLlMu"
+                          ],
+                          "permissions": "rw-r--r--"
+                        }
+                      }
+                    }
+                  },
+                  "files": {
+                    "highscores.txt": {
+                      "content": [
+                        "DEV HIGH SCORES",
+                        "===========",
+                        "1. PLAYER1 - 999999",
+                        "2. HACKER  - 123456",
+                        "3. WALLY   - 000042"
+                      ],
+                      "permissions": "r--------"
+                    }
+                  }
+                },
+                "games": {
+                  "dirs": {
+                    "set": {
+                      "files": {
+                        "card_1.dat": {
+                          "content": [],
+                          "permissions": "rwx------"
+                        },
+                        "card_2.dat": {
+                          "content": [],
+                          "permissions": "rwx------"
+                        },
+                        "card_3.dat": {
+                          "content": [],
+                          "permissions": "------rwx"
+                        },
+                        "help.txt": {
+                          "content": [
+                            "A set is defined as three cards that, for each of the available attributes, either are all the same or all different.",
+                            "In the standard card game, the attributes are quantity, shape, shading, and color.",
+                            "Hint: rwx"
+                          ],
+                          "permissions": "r--------"
+                        }
+                      }
+                    },
+                    "asteroids": {
+                      "files": {
+                        "NOTICE": {
+                          "content": [
+                            "Asteroids has been cancelled.",
+                            "Its budget was reallocated to the Walnut AI Division (/opt/walnut)."
+                          ],
+                          "permissions": "rw-r--r--"
+                        }
+                      }
+                    },
+                    "galaga": {
+                      "files": {
+                        "README": {
+                          "content": [
+                            "SPACEBULLETS (cabinet #2)",
+                            "",
+                            "Out of order. Something on this machine is eating all the CPU.",
+                            "Whoever finds it and ends it gets the cabinet key."
+                          ],
+                          "permissions": "rw-r--r--"
+                        }
+                      }
+                    },
+                    "oregon": {
+                      "files": {
+                        "README": {
+                          "content": [
+                            "You have died of dysentery.",
+                            "",
+                            "...no wait, that's the laser service. Check /var/log/boot.log.",
+                            "Some services won't start until their dependencies are sorted out."
+                          ],
+                          "permissions": "rw-r--r--"
+                        }
+                      }
+                    },
+                    "minesweeper": {
+                      "files": {
+                        "help.txt": {
+                          "content": [
+                            "Minesweeper is all about gathering intel on what can't yet be seen.",
+                            "Believe it or not, everything you need is already here..."
+                          ],
+                          "permissions": "rwxrwxrwx"
+                        },
+                        ".node_0_0": {
+                          "content": [],
+                          "permissions": "rwx------"
+                        },
+                        ".node_0_1": {
+                          "content": [
+                            1
+                          ],
+                          "permissions": "rwx------"
+                        },
+                        ".node_0_2": {
+                          "content": [
+                            1
+                          ],
+                          "permissions": "rwx------"
+                        },
+                        ".node_1_0": {
+                          "content": [
+                            1
+                          ],
+                          "permissions": "rwx------"
+                        },
+                        ".node_1_1": {
+                          "content": [
+                            11
+                          ],
+                          "permissions": "rwx------"
+                        },
+                        ".node_1_2": {
+                          "content": [],
+                          "permissions": "rwx------"
+                        },
+                        ".node_2_0": {
+                          "content": [],
+                          "permissions": "rwx------"
+                        },
+                        ".node_2_1": {
+                          "content": [
+                            11
+                          ],
+                          "permissions": "rwx------"
+                        },
+                        ".node_2_2": {
+                          "content": [
+                            1
+                          ],
+                          "permissions": "rwx------"
+                        },
+                        "helper.py": {
+                          "content": [
+                            "for f in os.listdir():",
+                            "    print(f'{f}: {os.path.getsize(f)} bytes')"
+                          ],
+                          "permissions": "rwx------"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "files": {
+                "readme.txt": {
+                  "content": [
+                    "Welcome to BLTHLL",
+                    "",
+                    "Hints:",
+                    "- Try exploring with 'ls' and 'cd'",
+                    "- Type 'help' to see available commands"
+                  ],
+                  "permissions": "rwxrwxrwx"
+                },
+                "manual.txt": {
+                  "content": [
+                    "SURVIVAL MANUAL",
+                    "===============",
+                    "Step 1: Don't get hit",
+                    "Step 2: See step 1",
+                    "Step 3: There is no step 3",
+                    "",
+                    "SYSTEM COMMANDS",
+                    "===============",
+                    "top - Interactive process monitor (q to quit)",
+                    "ps - Static process list",
+                    "kill <pid> - Terminate a process by PID",
+                    "",
+                    "Tip: Watch for processes with high CPU usage.",
+                    "Something might be draining system resources..."
+                  ],
+                  "permissions": "rwxrwxrwx"
+                },
+                "hello_world.py": {
+                  "content": [
+                    "# Simple test script",
+                    "print('Hello, World!')"
+                  ],
+                  "permissions": "rwx------"
+                }
+              }
+            }
+          },
+          "files": {
+            ".bash_history": {
+              "content": [
+                "cd blthll",
+                "ls -la",
+                "cat readme.txt",
+                "sudo systemctl status laser",
+                "WallySmith",
+                "ugh, wrong window",
+                "sudo systemctl status laser",
+                "ls /home/wally",
+                "claude --help",
+                "fortune | cowsay",
+                "history -c",
+                "exit"
+              ],
+              "permissions": "rw-------"
+            },
+            ".plan": {
+              "content": [
+                "Plan: survive.",
+                "Stretch goal: find out who 'wally' is and why he left in such a hurry."
+              ],
+              "permissions": "rw-r--r--"
+            }
+          }
+        },
+        "wally": {
+          "owner": "wally",
+          "permissions": "rwx------",
+          "files": {
+            "diary.txt": {
+              "content": [
+                "DAY 1:   Walnut gave me root and a 'bullet compliance' badge. Neat.",
+                "DAY 12:  Management wants to delete the game library to 'improve focus'.",
+                "DAY 13:  Hid the games behind puzzles. Management can't use ls, they'll never",
+                "         find them. Left notes for whoever comes next.",
+                "DAY 30:  The AI Division installed 'assistants' in /opt/walnut/ai. They are",
+                "         if-statements wearing a trench coat. Do not let them near prod.",
+                "DAY 31:  One of them ran 'rm -rf /'. It said it was 'just exploring'.",
+                "DAY 44:  There's a process hogging the CPU that keeps renaming itself.",
+                "         It runs as root. It isn't one of ours. Use 'top' and look for the",
+                "         odd one out.",
+                "DAY 45:  If they find this: the cows know things. Try 'fortune | cowsay'.",
+                "DAY 46:  Leaving. Good luck, pilot."
+              ],
+              "permissions": "rw-------",
+              "owner": "wally"
+            },
+            ".plan": {
+              "content": [
+                "1. Protect the games.",
+                "2. Change my password. It is literally my name.",
+                "3. Never got to step 2."
+              ],
+              "permissions": "rw-------",
+              "owner": "wally"
+            }
+          }
+        }
+      },
+      "owner": "root"
+    },
+    "etc": {
+      "dirs": {
+        "systemd": {
+          "owner": "root",
+          "dirs": {
+            "system": {
+              "owner": "root"
+            }
+          }
+        }
+      },
+      "files": {
+        "motd": {
+          "content": [
+            "Welcome to BLTHLL Terminal System",
+            "Unauthorized access will result in more bullets.",
+            "",
+            "Reminder: the Walnut AI assistants are for entertainment purposes only."
+          ],
+          "permissions": "rwxrwxrwx",
+          "owner": "root"
+        },
+        "hostname": {
+          "content": [
+            "blthll-terminal"
+          ],
+          "permissions": "rw-r--r--",
+          "owner": "root"
+        },
+        "os-release": {
+          "content": [
+            "NAME=\"BLTHLL OS\"",
+            "VERSION=\"0.2.0 (Graze Edition)\"",
+            "ID=blthll",
+            "PRETTY_NAME=\"BLTHLL OS 0.2.0\"",
+            "HOME_URL=\"file:///home/pilot/blthll\"",
+            "SUPPORT_URL=\"there is no support\"",
+            "BUG_REPORT_URL=\"the bugs report you\""
+          ],
+          "permissions": "rw-r--r--",
+          "owner": "root"
+        },
+        "passwd": {
+          "content": [
+            "root:x:0:0:root:/root:/bin/bash",
+            "daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin",
+            "pilot:x:1000:1000:Pilot,,,:/home/pilot:/bin/bash",
+            "wally:x:1001:1001:Wally Smith,,,Office of Bullet Compliance:/home/wally:/bin/bash",
+            "walnut-ai:x:999:999:Walnut AI Division (do not feed):/opt/walnut/ai:/usr/sbin/nologin"
+          ],
+          "permissions": "rw-r--r--",
+          "owner": "root"
+        },
+        "shadow": {
+          "content": [
+            "root:$6$nice$try.root.has.no.password.here:19700:0:99999:7:::",
+            "pilot:$6$salt$you.already.know.this.one:19700:0:99999:7:::",
+            "wally:WallySmith:19700:0:99999:7:::   # TODO: hash this. -W",
+            "walnut-ai:!:19700::::::"
+          ],
+          "permissions": "rw-------",
+          "owner": "root"
+        },
+        "hosts": {
+          "content": [
+            "127.0.0.1   localhost",
+            "127.0.1.1   blthll-terminal",
+            "10.0.0.42   walnut-mainframe",
+            "0.0.0.0     the-cloud   # we are not allowed on the cloud"
+          ],
+          "permissions": "rw-r--r--",
+          "owner": "root"
+        }
+      },
+      "owner": "root"
+    },
+    "usr": {
+      "owner": "root",
+      "dirs": {
+        "lib": {
+          "owner": "root",
+          "dirs": {
+            "systemd": {
+              "owner": "root",
+              "dirs": {
+                "system": {
+                  "owner": "root",
+                  "files": {
+                    "blthll.service": {
+                      "content": [
+                        "[Unit]",
+                        "Description=BLTHLL Terminal Service",
+                        "After=network.target",
+                        "",
+                        "[Service]",
+                        "Type=simple",
+                        "ExecStart=/usr/bin/blthll",
+                        "Restart=on-failure",
+                        "",
+                        "[Install]",
+                        "WantedBy=multi-user.target"
+                      ],
+                      "permissions": "rw-r--r--",
+                      "owner": "root"
+                    },
+                    "network.service": {
+                      "content": [
+                        "[Unit]",
+                        "Description=Network Service",
+                        "After=network-pre.target",
+                        "",
+                        "[Service]",
+                        "Type=oneshot",
+                        "RemainAfterExit=yes",
+                        "",
+                        "[Install]",
+                        "WantedBy=multi-user.target"
+                      ],
+                      "permissions": "rw-r--r--",
+                      "owner": "root"
+                    },
+                    "sshd.service": {
+                      "content": [
+                        "[Unit]",
+                        "Description=OpenSSH Server",
+                        "After=network.target",
+                        "",
+                        "[Service]",
+                        "Type=notify",
+                        "ExecStart=/usr/sbin/sshd -D",
+                        "Restart=on-failure",
+                        "",
+                        "[Install]",
+                        "WantedBy=multi-user.target"
+                      ],
+                      "permissions": "rw-r--r--",
+                      "owner": "root"
+                    },
+                    "laser.service": {
+                      "content": [
+                        "[Unit]",
+                        "Description=Doomsday Device",
+                        "Requires=cooler.service",
+                        "After=cooler.service",
+                        "",
+                        "[Service]",
+                        "Type=oneshot",
+                        "ExecStart=/bin/true",
+                        "",
+                        "[Install]",
+                        "WantedBy=multi-user.target"
+                      ],
+                      "permissions": "rw-r--r--",
+                      "owner": "root"
+                    },
+                    "shield.service": {
+                      "content": [
+                        "[Unit]",
+                        "Description=Defensive Barrier",
+                        "Conflicts=laser.service",
+                        "",
+                        "[Service]",
+                        "Type=oneshot",
+                        "ExecStart=/bin/true",
+                        "",
+                        "[Install]",
+                        "WantedBy=multi-user.target"
+                      ],
+                      "permissions": "rw-r--r--",
+                      "owner": "root"
+                    },
+                    "cooler.service": {
+                      "content": [
+                        "[Unit]",
+                        "Description=Cooling System",
+                        "",
+                        "[Service]",
+                        "Type=oneshot",
+                        "ExecStart=/bin/true",
+                        "",
+                        "[Install]",
+                        "WantedBy=multi-user.target"
+                      ],
+                      "permissions": "rw-r--r--",
+                      "owner": "root"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "local": {
+          "owner": "root",
+          "dirs": {
+            "deprecated": {
+              "owner": "root",
+              "files": {
+                "sys_control.py": {
+                  "content": [
+                    "#!/usr/bin/env python3",
+                    "# Broken systemctl implementation",
+                    "# This file needs to be moved to /bin/systemctl and made executable",
+                    "",
+                    "import sys",
+                    "print('systemctl: command not found')",
+                    "sys.exit(1)"
+                  ],
+                  "permissions": "rw-r--r--"
+                }
+              }
+            }
+          }
+        },
+        "share": {
+          "owner": "root",
+          "dirs": {
+            "games": {
+              "owner": "root",
+              "files": {
+                "fortunes": {
+                  "content": [
+                    "You will dodge many bullets, but not that one.",
+                    "A bullet in the hand is worth two in the hitbox.",
+                    "The cake is in another game.",
+                    "Focus mode (hold SHIFT) is not cheating. It is a lifestyle.",
+                    "There are 10 kinds of pilots: those who graze and those who die.",
+                    "Any sufficiently advanced if-statement is indistinguishable from AI.",
+                    "It works on my machine. Your machine is now my machine.",
+                    "rm -rf / is not a personality.",
+                    "The real bullets were the friends we made along the way.",
+                    "Have you tried turning the laser off and on again?",
+                    "Wally knew. Wally always knew.",
+                    "When in doubt, read the man page. When in more doubt, read the diary.",
+                    "To exit vim, simply become one with vim.",
+                    "The cows know things.",
+                    "Some files only open for root. Some roots only open for a name.",
+                    "Bosses have three phases. Your patience has one.",
+                    "The bomb clears bullets. It does not clear regrets.",
+                    "Today's lucky process ID: whichever one is eating your CPU.",
+                    "Nobody expects the base64 decoding.",
+                    "A graze a day keeps the game over away."
+                  ],
+                  "permissions": "rw-r--r--",
+                  "owner": "root"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "run": {
+      "owner": "root",
+      "dirs": {
+        "systemd": {
+          "owner": "root",
+          "dirs": {
+            "system": {
+              "owner": "root"
+            }
+          }
+        }
+      }
+    },
+    "var": {
+      "owner": "root",
+      "dirs": {
+        "log": {
+          "owner": "root",
+          "files": {
+            "boot.log": {
+              "content": [
+                "[OK] Started systemd",
+                "[OK] Started network.service",
+                "[FAILED] Failed to start Orbital Laser.",
+                "See 'systemctl status laser.service' for details.",
+                "[DEPEND] Dependency failed for Cooling System.",
+                "[OK] Started blthll.service"
+              ],
+              "permissions": "r--r--r--"
+            },
+            "auth.log": {
+              "content": [
+                "Nov 03 09:12:01 blthll sudo:   wally : TTY=pts/0 ; PWD=/home/wally ; USER=root ; COMMAND=/bin/systemctl stop laser",
+                "Nov 03 09:40:17 blthll sudo:   wally : 3 incorrect password attempts ; COMMAND=/usr/bin/vim /etc/shadow",
+                "Nov 03 09:40:55 blthll sshd[811]: Accepted password for wally from 10.0.0.42",
+                "Nov 04 02:00:00 blthll walnut-ai[999]: assistant attempted 'rm -rf /' (blocked: 'just exploring')",
+                "Nov 05 17:59:59 blthll sudo:   wally : user NOT in sudoers ; account disabled by HR",
+                "Nov 06 08:00:00 blthll login[1000]: pilot logged in. good luck."
+              ],
+              "permissions": "rw-r--r--",
+              "owner": "root"
+            }
+          }
+        },
+        "mail": {
+          "owner": "root",
+          "files": {
+            "pilot": {
+              "content": [
+                "From: hr@walnut.industries",
+                "Subject: Welcome aboard!",
+                "",
+                "Welcome to Walnut Industries! Your onboarding consists of surviving.",
+                "",
+                "From: it-helpdesk@walnut.industries",
+                "Subject: [ENCRYPTED] password reset",
+                "",
+                "This message was encrypted with military-grade ROT13:",
+                "Cvybg - gur fhqb cnffjbeq vf fgvyy Jnyyl'f shyy anzr, ab fcnprf. Qba'g gryy UE. -- VG",
+                "",
+                "From: ai-division@walnut.industries",
+                "Subject: Meet your new AI coworkers",
+                "",
+                "Try 'claude', 'gemini', 'codex', 'copilot' or 'ollama' at the prompt!",
+                "They run 100% offline on artisanal, hand-written if-statements."
+              ],
+              "permissions": "rw-------",
+              "owner": "pilot"
+            }
+          }
+        }
+      }
+    },
+    "bin": {
+      "owner": "root"
+    },
+    "system": {
+      "owner": "root",
+      "dirs": {
+        "core": {
+          "owner": "root",
+          "files": {
+            "init.py": {
+              "content": [
+                "#!/usr/bin/env python3",
+                "# BLTHLL System Initialization Script",
+                "# WARNING: This file is owned by root",
+                "# Modifications require elevated privileges",
+                "",
+                "def initialize_system():",
+                "    print('Initializing BLTHLL core systems...')",
+                "    print('[OK] All systems operational')",
+                "",
+                "if __name__ == '__main__':",
+                "    initialize_system()"
+              ],
+              "permissions": "---------",
+              "owner": "root"
+            }
+          }
+        }
+      }
+    },
+    "opt": {
+      "owner": "root",
+      "dirs": {
+        "walnut": {
+          "owner": "root",
+          "dirs": {
+            "ai": {
+              "owner": "walnut-ai",
+              "files": {
+                "README.md": {
+                  "content": [
+                    "# Walnut AI Assistant Suite",
+                    "",
+                    "Five world-class* AI coding assistants, now on your terminal:",
+                    "",
+                    "- `claude`  - thoughtful, polite, mildly anxious",
+                    "- `gemini`  - enthusiastic, has opinions about the multiverse",
+                    "- `codex`   - terse, ships first, asks questions never",
+                    "- `copilot` - finishes your sentences whether you like it or not",
+                    "- `ollama`  - runs 'locally' on a hamster wheel",
+                    "",
+                    "## Requirements",
+                    "",
+                    "- No API keys",
+                    "- No network",
+                    "- No intelligence",
+                    "",
+                    "*None of these are the real thing. They are parodies built from",
+                    "hand-written if-statements and a random number generator. Ask them."
+                  ],
+                  "permissions": "rw-r--r--",
+                  "owner": "walnut-ai"
+                },
+                "weights.bin": {
+                  "content": [
+                    "[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]",
+                    "# fine-tuned on: one (1) fortune cookie"
+                  ],
+                  "permissions": "rw-r--r--",
+                  "owner": "walnut-ai"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "proc": {
+      "owner": "root",
+      "files": {
+        "version": {
+          "content": [
+            "BLTHLL version 0.2.0-graze (walnut@mainframe) (gcc 4.2: the answer) #1 SMP PREEMPT_BULLET"
+          ],
+          "permissions": "r--r--r--",
+          "owner": "root"
+        },
+        "cpuinfo": {
+          "content": [
+            "processor   : 0",
+            "model name  : Walnut W-1 @ 3.14GHz (bullet accelerated)",
+            "flags       : fpu sse graze focus bomb no_api_keys",
+            "bogomips    : 1337.00"
+          ],
+          "permissions": "r--r--r--",
+          "owner": "root"
+        },
+        "meminfo": {
+          "content": [
+            "MemTotal:        640 kB  (ought to be enough for anybody)",
+            "MemFree:         12 kB",
+            "Bullets:         lots"
+          ],
+          "permissions": "r--r--r--",
+          "owner": "root"
+        }
+      }
+    },
+    "tmp": {
+      "owner": "root",
+      "permissions": "rwxrwxrwx"
+    }
+  }
+}

@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ascii-bullet"
+version = "0.2.0"
+description = "A terminal-aesthetic bullet hell wrapped in a fake (and very nosy) Unix machine."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "pygame-ce>=2.5,<3",
+    "RestrictedPython>=8.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+build = ["pyinstaller>=6", "pillow>=10"]
+
+[project.scripts]
+ascii-bullet = "src.main:main"
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.setuptools.package-data]
+"src" = ["assets/*", "data/*.json", "data/**/*.json", "data/**/*.txt"]
+
+[tool.pytest.ini_options]
+testpaths = ["src/tests"]
+addopts = "-q"
+filterwarnings = [
+    "ignore:Line None.*printed:SyntaxWarning",
+    "ignore::DeprecationWarning:pygame.*",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "UP", "I"]
+ignore = ["E501"]

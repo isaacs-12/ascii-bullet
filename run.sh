@@ -1,19 +1,12 @@
-#!/bin/bash
-# Run the ASCII Bullet Hell game
-
-# Activate virtual environment and run the game
+#!/usr/bin/env bash
+# Run ASCII Bullet Hell, creating a virtualenv on first launch.
+set -euo pipefail
 cd "$(dirname "$0")"
 
-if [ ! -d "venv" ]; then
-    echo "Virtual environment not found. Creating one..."
+if [ ! -d venv ]; then
+    echo "Creating virtual environment..."
     python3 -m venv venv
-    source venv/bin/activate
-    echo "Installing dependencies..."
-    pip install -r requirements.txt
-else
-    source venv/bin/activate
+    ./venv/bin/pip install --quiet -r requirements.txt
 fi
 
-echo "Starting ASCII Bullet Hell..."
-python main.py
-
+exec ./venv/bin/python main.py "$@"

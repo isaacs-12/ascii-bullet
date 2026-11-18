@@ -86,7 +86,7 @@ class OregonTrailState(BaseState):
         """Called when exiting this state"""
         # Track playtime
         playtime_seconds = time.time() - self.game_start_time
-        self.game.save_system.add_playtime(playtime_seconds, "total")
+        self.game.save_system.add_playtime(playtime_seconds, "oregon_trail")
     
     def _save_state(self):
         """Save current game state"""

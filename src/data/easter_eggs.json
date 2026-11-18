@@ -1,0 +1,187 @@
+{
+ "commands": {
+  "hello": {
+   "aliases": [
+    "hi"
+   ],
+   "output": [
+    "Hello, human. Ready to dodge some bullets?"
+   ]
+  },
+  "ping": {
+   "output": [
+    "PONG! The bullets hit back."
+   ]
+  },
+  "hack": {
+   "output": [
+    "HACK THE PLANET!",
+    "Access granted... to more bullets."
+   ],
+   "achievement": "hacker",
+   "color": "accent"
+  },
+  "matrix": {
+   "output": [
+    "There is no spoon. Only bullets.",
+    "(for the full experience: cmatrix)"
+   ],
+   "achievement": "matrix"
+  },
+  "konami": {
+   "output": [
+    "UP UP DOWN DOWN LEFT RIGHT LEFT RIGHT B A",
+    "Classic! Try typing it on the keyboard instead..."
+   ],
+   "achievement": "konami"
+  },
+  "xyzzy": {
+   "output": [
+    "Nothing happens.",
+    "...",
+    "A hollow voice says: 'Fool.' (achievement unlocked anyway)"
+   ],
+   "achievement": "xyzzy",
+   "typed": true
+  },
+  "please": {
+   "output": [
+    "Manners won't get you root. A password will."
+   ]
+  },
+  "42": {
+   "output": [
+    "Yes, but what was the question?"
+   ]
+  },
+  "coffee": {
+   "output": [
+    "Error 418: I'm a teapot."
+   ]
+  },
+  "skynet": {
+   "output": [
+    "Skynet is not available in your region.",
+    "Walnut AI Division is, unfortunately."
+   ]
+  },
+  "lol": {
+   "output": [
+    "lol"
+   ]
+  },
+  "make": {
+   "output": [
+    "make: *** No targets specified and no makefile found.  Stop.",
+    "(try asking more specifically. and with privileges.)"
+   ]
+  }
+ },
+ "phrases": {
+  "hack the planet": {
+   "output": [
+    "HACK THE PLANET!",
+    "Access granted... to more bullets."
+   ],
+   "achievement": "hacker",
+   "color": "accent"
+  },
+  "make me a sandwich": {
+   "output": [
+    "What? Make it yourself."
+   ]
+  },
+  "sudo make me a sandwich": {
+   "output": [
+    "Okay."
+   ],
+   "achievement": "sandwich",
+   "color": "warn"
+  },
+  ":(){ :|:& };:": {
+   "output": [
+    "Fork bomb detected.",
+    "Defused by the Walnut Industries Bomb Squad (it's one guy).",
+    "Nice try though."
+   ],
+   "achievement": "fork_bomb",
+   "color": "error",
+   "typed": true
+  },
+  ":q": {
+   "output": [
+    "You're not in vim. You're free. You've always been free."
+   ],
+   "achievement": "vim_escape"
+  },
+  ":q!": {
+   "output": [
+    "You're not in vim. No need to force it."
+   ],
+   "achievement": "vim_escape"
+  },
+  ":wq": {
+   "output": [
+    "Nothing to write. Nothing to quit. Just you and the prompt."
+   ],
+   "achievement": "vim_escape"
+  },
+  ":x": {
+   "output": [
+    "E492: Not an editor command. Also: not an editor."
+   ],
+   "achievement": "vim_escape"
+  },
+  "touch grass": {
+   "output": [
+    "touch: cannot touch 'grass': it's outside.",
+    "(achievement unlocked: you considered it.)"
+   ],
+   "achievement": "touch_grass",
+   "color": "fg"
+  },
+  "rm -rf /": {
+   "output": [
+    "ERROR: Cannot delete bullets. They multiply too fast!"
+   ],
+   "achievement": "destructive",
+   "color": "error"
+  },
+  "sudo rm -rf /": {
+   "output": [
+    "Nice try. Even root can't delete the bullets.",
+    "(Wally added a guard after the AI incident.)"
+   ],
+   "achievement": "destructive",
+   "color": "error"
+  },
+  "rm -rf /*": {
+   "output": [
+    "ERROR: Cannot delete bullets. They multiply too fast!"
+   ],
+   "achievement": "destructive",
+   "color": "error"
+  },
+  "hello world": {
+   "output": [
+    "Hello, world! (you should try 'python hello_world.py')"
+   ]
+  },
+  "what is the meaning of life": {
+   "output": [
+    "42. Next question."
+   ]
+  },
+  "up up down down left right left right b a": {
+   "output": [
+    "You typed it. Respect. Now try it with the arrow keys."
+   ],
+   "achievement": "konami"
+  },
+  "i am root": {
+   "output": [
+    "No you're not. 'whoami' agrees with me."
+   ]
+  }
+ }
+}

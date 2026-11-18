@@ -89,7 +89,7 @@ def _check_dependency_puzzle(filesystem):
             return False
     finally:
         filesystem.current_path = saved
-    
+
     # 2. Check if override directory exists
     override_dir = "/etc/systemd/system/cooler.service.d"
     saved = filesystem.current_path[:]
@@ -110,18 +110,18 @@ def _check_dependency_puzzle(filesystem):
         filesystem.change_directory('/etc/systemd/system/cooler.service.d')
         if not filesystem.file_exists('override.conf'):
             return False
-        
+
         # Read the file and check for Conflicts=laser.service
         success, content = filesystem.read_file('override.conf')
         if not success:
             return False
-        
+
         # Check content (handle both list and string formats)
         if isinstance(content, list):
             content_str = '\n'.join(str(line) for line in content)
         else:
             content_str = str(content)
-        
+
         # Check if it contains Conflicts=laser.service (case-insensitive, allow spaces)
         content_lower = content_str.lower()
         if 'conflicts' in content_lower and 'laser.service' in content_lower:
@@ -136,7 +136,7 @@ def _check_dependency_puzzle(filesystem):
                     return True
     finally:
         filesystem.current_path = saved
-    
+
     return False
 
 

@@ -1,112 +1,87 @@
-"""Main game class"""
+"""Main game controller: owns the renderer, save data and the active state."""
 
-import sys
+from __future__ import annotations
+
 import time
+
 import pygame
-from src.core.terminal_renderer import TerminalRenderer
-from src.states.main_menu import MainMenuState
+
+from src.core.audio import Sfx
 from src.core.save_system import SaveSystem
+from src.core.terminal_renderer import TerminalRenderer
+
+MAX_FRAME_MS = 50  # clamp dt so a window drag or breakpoint can't teleport bullets
+PLAYTIME_FLUSH_SECONDS = 30.0
 
 
 class Game:
-    """Main game controller"""
-    
-    def __init__(self):
-        """Initialize the game"""
-        # Initialize save system
-        self.save_system = SaveSystem()
-        
-        # Create terminal renderer
-        self.renderer = TerminalRenderer(width=160, height=75, cell_size=14)
-        
-        # Game state
+    """Top-level loop. States implement handle_events/update/render/enter/exit."""
+
+    def __init__(self, save_system: SaveSystem | None = None, renderer: TerminalRenderer | None = None):
+        self.save_system = save_system or SaveSystem()
+        self.renderer = renderer or TerminalRenderer(width=160, height=75, cell_size=14)
+        self.renderer.crt_enabled = bool(self.save_system.get_setting("crt", True))
+        self.renderer.shake_enabled = bool(self.save_system.get_setting("screen_shake", True))
+        self.sfx = Sfx(enabled=bool(self.save_system.get_setting("sound", True)))
+        theme = self.save_system.get_setting("theme")
+        if theme:
+            self.renderer.set_theme(theme)
+
         self.running = True
         self.current_state = None
-        
-        # Playtime tracking
-        self.session_start_time = time.time()
         self.last_playtime_save = time.time()
-        self.playtime_save_interval = 30.0  # Save playtime every 30 seconds
-        
-        # Initialize with main menu
+
+        # Imported here to avoid a cycle (states import Game indirectly).
+        from src.states.main_menu import MainMenuState
+
         self.change_state(MainMenuState(self))
-    
-    def change_state(self, new_state, call_enter=True):
-        """
-        Change to a new game state
-        
-        Args:
-            new_state: The new state to switch to
-            call_enter: Whether to call enter() on the new state (default True)
-        """
+
+    def change_state(self, new_state, call_enter: bool = True) -> None:
         if self.current_state:
             self.current_state.exit()
-        
         self.current_state = new_state
         if call_enter:
             self.current_state.enter()
-    
-    def handle_events(self):
-        """Handle pygame events"""
+
+    def handle_events(self) -> None:
         events = pygame.event.get()
         for event in events:
             if event.type == pygame.QUIT:
                 self.running = False
             elif event.type == pygame.VIDEORESIZE:
-                # Handle window resize
                 self.renderer.handle_resize(event.w, event.h)
-        
-        # Pass events to current state
         if self.current_state:
             self.current_state.handle_events(events)
-    
-    def update(self, dt):
-        """
-        Update game logic
-        
-        Args:
-            dt: Delta time in milliseconds
-        """
+
+    def update(self, dt: float) -> None:
+        dt = min(dt, MAX_FRAME_MS)
         if self.current_state:
             self.current_state.update(dt)
-        
-        # Track playtime
-        current_time = time.time()
-        elapsed = current_time - self.last_playtime_save
-        
-        if elapsed >= self.playtime_save_interval:
-            # Save playtime periodically
-            dt_seconds = elapsed
-            self.save_system.add_playtime(dt_seconds, "total")
-            self.last_playtime_save = current_time
-    
-    def render(self):
-        """Render the current game state"""
+        self.renderer.update_effects(dt)
+        now = time.time()
+        if now - self.last_playtime_save >= PLAYTIME_FLUSH_SECONDS:
+            self.flush_playtime(now)
+
+    def flush_playtime(self, now: float | None = None) -> None:
+        now = now or time.time()
+        elapsed = now - self.last_playtime_save
+        if elapsed > 0:
+            self.save_system.add_playtime(elapsed, "total")
+        self.last_playtime_save = now
+
+    def render(self) -> None:
         if self.current_state:
             self.current_state.render()
-    
-    def run(self):
-        """Main game loop"""
+
+    def run(self) -> None:
         try:
             while self.running:
-                # Handle events
                 self.handle_events()
-                
-                # Update
                 dt = self.renderer.tick(60)
                 self.update(dt)
-                
-                # Render
                 self.render()
-        
         finally:
-            # Save any remaining playtime before exiting
-            current_time = time.time()
-            elapsed = current_time - self.last_playtime_save
-            if elapsed > 0:
-                self.save_system.add_playtime(elapsed, "total")
-            
-            # Clean up
+            self.flush_playtime()
+            if self.current_state:
+                self.current_state.exit()
             self.renderer.quit()
-            sys.exit(0)
-

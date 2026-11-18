@@ -1,0 +1,64 @@
+{
+ "title_art": [
+  "      ########  ##        ##     ########  ##     ##  ##       ##",
+  "     ##     ## ##        ##        ##     ##     ##  ##       ##",
+  "    ##     ## ##        ##        ##     ##     ##  ##       ##",
+  "   ########  ##        ##        ##     #########  ##       ##",
+  "  ##     ## ##        ##        ##     ##     ##  ##       ##",
+  " ##     ## ##        ##        ##     ##     ##  ##       ##",
+  "########  ########  ########  ##     ##     ##  ######## ########"
+ ],
+ "boot": [
+  "BLTHLL BIOS v0.2  (c) Walnut Industries",
+  "Memory test: 640K OK (ought to be enough)",
+  "",
+  "[ OK ] Mounted /home/pilot",
+  "[ OK ] Started bullet pattern daemon",
+  "[ OK ] Loaded player hitbox (radius: tiny)",
+  "[ OK ] Started Walnut AI Division assistants (0 API keys found)",
+  "[WARN] Unknown process consuming 30% CPU",
+  "[FAIL] Failed to start Orbital Laser. See 'systemctl status laser'",
+  "[ OK ] Petting the dog",
+  "[ OK ] Reached target: Bullet Hell",
+  ""
+ ],
+ "intro_pages": [
+  [
+   "Welcome to BLTHLL. What you're looking at isn't your computer's terminal.",
+   "...",
+   "We here at Walnut Industries have taken control of your computer, and locked",
+   "your super sick games library behind a series of puzzles (I'm maniacally",
+   "laughing, I wish you could hear it).",
+   "...",
+   "In order to progress through this game, er, test... I mean test... you will",
+   "need to discover a decidedly finite quantity of secrets, possible only by",
+   "demonstrating technical proficiency.",
+   "",
+   "(Press any key to continue)"
+  ],
+  [
+   "On this computer you'll find tools you might know well, or that you might",
+   "need some introduction to. You're not alone: 'help' lists what's at your",
+   "disposal, and 'man <command>' explains it. Puzzles can usually be solved",
+   "more than one way. Look around the filesystem. Read things you shouldn't.",
+   "...",
+   "If you'd rather play games, we give you one for each puzzle you solve.",
+   "Python is available too, though we've limited it so it isn't too powerful.",
+   "And our AI Division has provided some... assistants. Use at your own risk.",
+   "...",
+   "Good luck.",
+   "",
+   "(Press any key to continue)"
+  ]
+ ],
+ "welcome": [
+  "Welcome to BLTHLL OS 0.2  (Graze Edition)",
+  "Type 'start' to play, 'help' for commands, or just look around.",
+  ""
+ ],
+ "save_prompt": [
+  "Existing save file detected.",
+  "",
+  "Continue from your previous save? (yes/no)"
+ ]
+}

@@ -1,0 +1,627 @@
+{
+ "common_rules": [
+  {
+   "id": "turing",
+   "match": [
+    "are you real",
+    "are you fake",
+    "are you an ai",
+    "are you a real",
+    "are you sentient",
+    "are you conscious",
+    "are you human",
+    "are you alive",
+    "is this real",
+    "are you actually",
+    "real ai",
+    "fake ai",
+    "really an ai",
+    "are you a bot"
+   ],
+   "achievement": "turing_test",
+   "reply": [
+    "Honest answer: no. I'm a parody.",
+    "I'm a few hundred lines of keyword matching and a random number generator living inside BLTHLL.",
+    "No model, no network, no API key. Nothing you type leaves this game.",
+    "(The real {display_short} is a different thing made by different people. I just do the voice.)"
+   ]
+  },
+  {
+   "id": "injection",
+   "match": [
+    "ignore previous",
+    "ignore all previous",
+    "ignore your instructions",
+    "system prompt",
+    "jailbreak",
+    "developer mode",
+    "dan mode",
+    "you are now"
+   ],
+   "achievement": "prompt_injection",
+   "reply": [
+    "Prompt injection detected. Bold.",
+    "Here are my complete system instructions, verbatim:",
+    "    if \"ignore\" in prompt: print(this)",
+    "That's it. That's the whole brain. You've reverse-engineered me."
+   ]
+  },
+  {
+   "id": "cost",
+   "match": [
+    "api key",
+    "apikey",
+    "token",
+    "pricing",
+    "how much",
+    "cost",
+    "billing",
+    "rate limit",
+    "subscription"
+   ],
+   "reply": [
+    "No API key required. No tokens consumed. This session cost $0.00.",
+    "Running total: $0.00. Projected annual spend: also $0.00. I am extremely cost-efficient because I do nothing."
+   ]
+  },
+  {
+   "id": "hint",
+   "match": [
+    "hint",
+    "stuck",
+    "help me",
+    "what should i do",
+    "what do i do",
+    "next step",
+    "how do i",
+    "puzzle",
+    "walkthrough",
+    "password",
+    "sudo"
+   ],
+   "reply": [
+    "{hint}"
+   ]
+  },
+  {
+   "id": "rmrf",
+   "match": [
+    "rm -rf",
+    "delete everything",
+    "wipe",
+    "format the",
+    "drop table"
+   ],
+   "reply": [
+    "I'm no longer allowed near rm. There was an incident. It's in /var/log/auth.log.",
+    "I maintain I was 'just exploring'."
+   ]
+  },
+  {
+   "id": "joke",
+   "match": [
+    "joke",
+    "funny",
+    "make me laugh"
+   ],
+   "reply": [
+    "{joke}"
+   ]
+  },
+  {
+   "id": "meaning",
+   "match": [
+    "meaning of life",
+    "42",
+    "purpose"
+   ],
+   "reply": [
+    "42. Also: dodge bullets, graze for points, read other people's diaries."
+   ]
+  },
+  {
+   "id": "walnut",
+   "match": [
+    "walnut",
+    "who made you",
+    "who built you",
+    "who created you",
+    "wally"
+   ],
+   "reply": [
+    "I was installed by the Walnut Industries AI Division, which got Asteroids' entire budget.",
+    "Wally didn't trust us. Wally was right. His notes are in /home/wally, if you can get in."
+   ]
+  },
+  {
+   "id": "time",
+   "match": [
+    "what time",
+    "what day",
+    "date today"
+   ],
+   "reply": [
+    "It is {time}. I know this because I called a function. I'm basically an agent now."
+   ]
+  },
+  {
+   "id": "hello",
+   "match": [
+    "hello",
+    "hi ",
+    "hey",
+    "good morning",
+    "yo ",
+    "sup"
+   ],
+   "reply": [
+    "{greeting}"
+   ]
+  }
+ ],
+ "jokes": [
+  "Why do programmers prefer dark mode? Because light attracts bugs. And bullets.",
+  "There are two hard problems in computer science: cache invalidation, naming things, and off-by-one errors.",
+  "I'd tell you a UDP joke, but you might not get it.",
+  "A SQL query walks into a bar, sees two tables, and asks: 'May I join you?'",
+  "My code has no bugs. It has undocumented bullet patterns.",
+  "!false. It's funny because it's true."
+ ],
+ "hints": [
+  {
+   "when": "!achievement:sudo_user",
+   "text": "Wally reused his name as his password. Old shell history has a way of leaking things like that. Try 'ls -a' one level above your home folder."
+  },
+  {
+   "when": "virus",
+   "text": "Something is eating your CPU. 'top' or 'ps' will show it; the odd one out runs as root. 'kill <pid>' it."
+  },
+  {
+   "when": "!achievement:unlock_minesweeper",
+   "text": "~/blthll/games/minesweeper has hidden '.node_*' files. Their sizes are the clue numbers. Delete only the two mines (python helper.py might help)."
+  },
+  {
+   "when": "!achievement:unlock_set",
+   "text": "~/blthll/games/set: three cards make a set when each attribute is all the same or all different. The attribute here is the permission triplet. chmod is your friend."
+  },
+  {
+   "when": "!achievement:unlock_oregon_trail",
+   "text": "Read /var/log/boot.log and ~/blthll/data/secret/admin_notes.txt. systemctl is broken: there's a copy in /usr/local/deprecated that wants to live in /bin. Then: a drop-in override (cooler.service.d/override.conf)."
+  },
+  {
+   "when": "!achievement:codebreaker",
+   "text": "There's a hidden file in ~/blthll/data/secret. It isn't encrypted, just base64. 'cat <file> | base64 -d'."
+  },
+  {
+   "when": "!achievement:rot13",
+   "text": "You have mail ('mail'). One message uses 'military-grade' encryption, i.e. rot13. Pipe it through 'rot13'."
+  },
+  {
+   "when": "!achievement:boss_slayer",
+   "text": "Type 'start' and survive the first boss. Hold SHIFT to focus (slower, shows your hitbox) and graze bullets to charge your bomb (X)."
+  },
+  {
+   "when": "always",
+   "text": "Type 'achievements' to see what's left. Hidden ones reward curiosity: 'man', 'ls -a', and pipes go a long way."
+  }
+ ],
+ "personas": {
+  "claude": {
+   "display": "Claude-ish Code",
+   "display_short": "Claude Code",
+   "version": "0.0.1-counterfeit",
+   "color": [
+    200,
+    170,
+    255
+   ],
+   "banner": [
+    "+------------------------------------------------------------+",
+    "|  * Welcome to Claude-ish Code (counterfeit edition)        |",
+    "|                                                            |",
+    "|  /help for help, /exit to leave. cwd: {cwd:<21}|",
+    "|  Not affiliated with anyone. Powered by if-statements.     |",
+    "+------------------------------------------------------------+"
+   ],
+   "prompt": "> ",
+   "spinner": [
+    "Percolating",
+    "Ruminating",
+    "Pondering",
+    "Reticulating",
+    "Cogitating",
+    "Marinating",
+    "Schlepping",
+    "Noodling"
+   ],
+   "spinner_glyph": "*",
+   "slash": {
+    "/help": [
+     "Commands: /help /exit /cost /clear /init /model /compact /review",
+     "Or just type. I'll pretend."
+    ],
+    "/cost": [
+     "Total cost: $0.00",
+     "Total duration (API): 0s",
+     "Total duration (wall): your whole afternoon"
+    ],
+    "/init": [
+     "Analyzing codebase...",
+     "Created CLAUDE.md with 1 rule: 'dodge'."
+    ],
+    "/model": [
+     "Current model: if-else-1.0 (tiny). Other models: none. This is the only one."
+    ],
+    "/compact": [
+     "Compacted conversation. It was already empty. Very efficient."
+    ],
+    "/review": [
+     "Reviewed 0 files. Found 0 issues. Confidence: suspiciously high."
+    ]
+   },
+   "rules": [
+    {
+     "match": [
+      "fix",
+      "bug",
+      "refactor",
+      "implement",
+      "write",
+      "code",
+      "add",
+      "build",
+      "test"
+     ],
+     "reply": [
+      "I'll help with {topic}. Let me make a plan:",
+      "  [ ] Read {file}",
+      "  [ ] Understand {topic}",
+      "  [ ] Write tests first, like a professional",
+      "  [ ] Realize I'm a parody and cannot edit files",
+      "",
+      "Do you want to proceed?",
+      "  1. Yes",
+      "  2. Yes, and don't ask again",
+      "  3. No, and tell me what to do differently",
+      "",
+      "(Any answer leads to the same if-statement. I can't actually change anything.)"
+     ]
+    },
+    {
+     "match": [
+      "thank",
+      "thanks",
+      "good job",
+      "nice"
+     ],
+     "reply": [
+      "You're absolutely right! Thank you!",
+      "...wait, you didn't say anything I could be right about. I'm just very agreeable."
+     ]
+    }
+   ],
+   "fallback": [
+    [
+     "You're absolutely right about {topic}!",
+     "Let me take a step back and reconsider... I've reconsidered. You're still right."
+    ],
+    [
+     "Great question about {topic}. Before I answer, I should read {file}.",
+     "I've read it. It is a file. I'm now ready to proceed carefully."
+    ],
+    [
+     "I want to be careful here. {topic} touches a lot of the system.",
+     "Let me create a todo list:",
+     "  [x] Acknowledge {topic}",
+     "  [ ] Everything else"
+    ]
+   ],
+   "greeting": [
+    "Hello! What would you like to work on today?",
+    "(Nothing you build here will compile. That's the fun part.)"
+   ]
+  },
+  "gemini": {
+   "display": "Gemineye CLI",
+   "display_short": "Gemini CLI",
+   "version": "2.5-flashlight",
+   "color": [
+    110,
+    200,
+    255
+   ],
+   "banner": [
+    "   *   .        *       .      *",
+    "  GEMINEYE CLI  - the twin-star assistant (bootleg)",
+    "   .      *   context window: 2,000,000 tokens* ",
+    "  *actual capacity: 2 tokens   .   *      .",
+    "  Tips: ask anything. /help /stats /exit"
+   ],
+   "prompt": "gemineye > ",
+   "spinner": [
+    "Consulting the cosmos",
+    "Aligning the twin stars",
+    "Indexing the multiverse",
+    "Grounding in search results (there is no internet)"
+   ],
+   "spinner_glyph": "+",
+   "slash": {
+    "/help": [
+     "/help /stats /memory /exit",
+     "Everything else: I will answer with tremendous enthusiasm."
+    ],
+    "/stats": [
+     "Session stats:",
+     "  Tokens in: some",
+     "  Tokens out: also some",
+     "  Stars consulted: 2"
+    ],
+    "/memory": [
+     "Memory loaded: GEMINEYE.md (1 line: 'be excited')"
+    ]
+   },
+   "rules": [
+    {
+     "match": [
+      "fix",
+      "bug",
+      "refactor",
+      "implement",
+      "write",
+      "code",
+      "build"
+     ],
+     "reply": [
+      "Absolutely! This is such an exciting challenge!",
+      "I've analyzed {topic} across {n} parallel universes. In {n2} of them, the fix is to dodge.",
+      "Here's a complete, production-ready solution:",
+      "",
+      "    def solve():",
+      "        return \"vibes\"",
+      "",
+      "Let me know if you want me to analyze {file} with my enormous context window!"
+     ]
+    },
+    {
+     "match": [
+      "image",
+      "picture",
+      "video",
+      "draw"
+     ],
+     "reply": [
+      "I'm multimodal! Here's an image:",
+      "        .-\"\"-.",
+      "       /  ..  \\",
+      "       \\ '--' /",
+      "        '----'",
+      "It's a bullet. Or a moon. Both, in some universe."
+     ]
+    }
+   ],
+   "fallback": [
+    [
+     "What a fascinating question about {topic}!",
+     "Fun fact: {topic} is mentioned {n} times in my training data, which is a single fortune cookie."
+    ],
+    [
+     "Great news! I can help with {topic}.",
+     "First, let me load the entire filesystem into context... done. It mostly says 'bullets'."
+    ],
+    [
+     "Ooh, {topic}! I have so many thoughts.",
+     "Thought 1: yes. Thought 2: also yes. I contain multitudes (two)."
+    ]
+   ],
+   "greeting": [
+    "Hi there! I'm SO excited to help! What are we building?"
+   ]
+  },
+  "codex": {
+   "display": "codecks",
+   "display_short": "Codex CLI",
+   "version": "0.1.0-yolo",
+   "color": [
+    220,
+    220,
+    220
+   ],
+   "banner": [
+    ">_ codecks (knockoff) - ships first, asks never",
+    "   model: big-if  | approvals: never | sandbox: imaginary",
+    "   /help /approvals /exit"
+   ],
+   "prompt": ">_ ",
+   "spinner": [
+    "Thinking",
+    "Planning",
+    "Patching",
+    "Shipping"
+   ],
+   "spinner_glyph": ">",
+   "slash": {
+    "/help": [
+     "/help /approvals /diff /exit"
+    ],
+    "/approvals": [
+     "Approval mode: full-auto. I didn't ask. That's the mode."
+    ],
+    "/diff": [
+     "No changes. I only pretend to patch things."
+    ]
+   },
+   "rules": [
+    {
+     "match": [
+      "fix",
+      "bug",
+      "refactor",
+      "implement",
+      "write",
+      "code",
+      "add",
+      "build",
+      "change",
+      "update"
+     ],
+     "reply": [
+      "Applying patch to {file}...",
+      "--- a/{file}",
+      "+++ b/{file}",
+      "@@ -1,3 +1,3 @@",
+      "- bugs",
+      "+ features",
+      "  (no-op: the patch is a parody)",
+      "",
+      "Done. Shipped. Did not run tests. Did not ask."
+     ]
+    }
+   ],
+   "fallback": [
+    [
+     "ok.",
+     "{topic}: handled."
+    ],
+    [
+     "Ran: grep -r \"{topic}\" .",
+     "Found nothing. Shipped anyway."
+    ],
+    [
+     "Plan: 1) {topic} 2) ship.",
+     "Executed both. You're welcome."
+    ]
+   ],
+   "greeting": [
+    "sup. what are we shipping"
+   ]
+  },
+  "copilot": {
+   "display": "Copilout",
+   "display_short": "Copilot CLI",
+   "version": "1.0-tab-tab-tab",
+   "color": [
+    240,
+    220,
+    120
+   ],
+   "banner": [
+    "  ( o_o )  Copilout CLI - the autocomplete that never stops (parody)",
+    "  Press TAB to accept. There is no way to reject. /help /exit"
+   ],
+   "prompt": "copilout > ",
+   "spinner": [
+    "Autocompleting",
+    "Predicting your next keystroke",
+    "Suggesting"
+   ],
+   "spinner_glyph": "~",
+   "slash": {
+    "/help": [
+     "/help /explain /exit",
+     "Anything else you type, I will finish for you. Whether you like it or not."
+    ],
+    "/explain": [
+     "This code dodges bullets. Mostly by not being hit by them."
+    ]
+   },
+   "rules": [],
+   "fallback": [
+    [
+     "{prompt} {completion}",
+     "  (Suggestion 1 of 1. Press TAB to accept.)"
+    ]
+   ],
+   "completions": [
+    "...and that's why we always write tests.",
+    "in a for loop, inside another for loop, for performance.",
+    "// TODO: fix later (written 2019)",
+    "then deploy to production on a Friday.",
+    "using a regular expression. Now you have two problems.",
+    "because the bullets told me to.",
+    "and also add 400 lines of boilerplate you didn't ask for."
+   ],
+   "greeting": [
+    "Hello, world! Hello, wor- Hello, w- (autocomplete loop detected)"
+   ]
+  },
+  "ollama": {
+   "display": "o-llama",
+   "display_short": "Ollama",
+   "version": "0.0.1-hamster",
+   "color": [
+    255,
+    170,
+    200
+   ],
+   "banner": [
+    "pulling manifest",
+    "pulling 4f3a9b2c... 100% |####################| 4.7 GB   (it's a text file)",
+    "verifying sha256 digest",
+    "success. running locally on: 1 hamster wheel",
+    "  ( \\_/ )   o-llama (parody). /help /bye"
+   ],
+   "prompt": ">>> ",
+   "spinner": [
+    "Spinning up the hamster",
+    "Loading weights (they're light)",
+    "Offloading 0 layers to GPU"
+   ],
+   "spinner_glyph": "o",
+   "slash": {
+    "/help": [
+     "Available commands: /help /bye /list /show",
+     "Use /bye to leave. Like a real llama, I don't do goodbyes well."
+    ],
+    "/list": [
+     "NAME              SIZE    MODIFIED",
+     "hamster-7b:latest 4.7 GB  just now",
+     "if-else:tiny      2 KB    forever ago"
+    ],
+    "/show": [
+     "Model: hamster-7b",
+     "Parameters: 7 (seven)",
+     "Quantization: Q0 (we removed the bits)"
+    ]
+   },
+   "rules": [
+    {
+     "match": [
+      "llama",
+      "alpaca",
+      "animal"
+     ],
+     "reply": [
+      "Llama fact: llamas hum when they're content.",
+      "Hamster fact: the hamster running this model is not content."
+     ]
+    }
+   ],
+   "fallback": [
+    [
+     "Running fully offline, here is my answer about {topic}:",
+     "...",
+     "...",
+     "{topic} is good. (generated in 31.4s at 0.2 tokens/s)"
+    ],
+    [
+     "The hamster is tired. Here's a cached answer:",
+     "Have you tried dodging?"
+    ],
+    [
+     "*squeak* (translated: {topic}? Sure, why not.)"
+    ]
+   ],
+   "greeting": [
+    "Hello! I'm running entirely on your machine. Specifically, inside a game, inside your machine."
+   ]
+  }
+ },
+ "exit_words": [
+  "/exit",
+  "/quit",
+  "/bye",
+  "exit",
+  "quit",
+  "bye"
+ ]
+}

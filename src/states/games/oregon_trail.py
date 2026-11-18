@@ -2,17 +2,19 @@
 
 import random
 import time
+
 import pygame
+
 from src.states.base_state import BaseState
 
 
 class OregonTrailState(BaseState):
     """Oregon Trail game state"""
-    
+
     def __init__(self, game, previous_state):
         super().__init__(game)
         self.previous_state = previous_state
-        
+
         # Game state variables
         self.m = 0      # Total mileage
         self.m2 = 0     # Previous mileage
@@ -31,41 +33,41 @@ class OregonTrailState(BaseState):
         self.x1 = -1    # Fort flag
         self.d9 = 5     # Shooting skill (default)
         self.e = 2      # Eating level (default moderate)
-        
+
         # State machine
         self.phase = "instructions"  # instructions, shooting_skill, purchases, main_game, shooting_mini, game_over, victory
         self.input_buffer = ""
         self.messages = []
         self.waiting_for_input = True
         self.scroll_offset = 0  # How many lines to scroll back (0 = show most recent)
-        
+
         # Shooting mini-game
         self.shooting_target = None
         self.shooting_start_time = None
         self.shooting_result = None
-        
+
         # Fort purchases
         self.fort_purchasing = None  # "food", "ammo", "cloth", "misc", None
-        
+
         # Event handling
         self.current_event = None
         self.event_choice = None
-        
+
         self.dates = [
             "APRIL 12", "APRIL 26", "MAY 10", "MAY 24", "JUNE 7", "JUNE 21",
             "JULY 5", "JULY 19", "AUGUST 2", "AUGUST 16", "AUGUST 31",
             "SEPTEMBER 13", "SEPTEMBER 27", "OCTOBER 11", "OCTOBER 25",
             "NOVEMBER 8", "NOVEMBER 22", "DECEMBER 6", "DECEMBER 20"
         ]
-        
+
         self.game_start_time = time.time()
-    
+
     def enter(self):
         """Called when entering this state"""
         # Initialize scroll offset
         if not hasattr(self, 'scroll_offset'):
             self.scroll_offset = 0
-        
+
         # Try to load saved game state
         saved_state = self.game.save_system.load_oregon_trail()
         if saved_state:
@@ -81,13 +83,13 @@ class OregonTrailState(BaseState):
             self.input_buffer = ""
             self.phase = "instructions"
             self.scroll_offset = 0
-    
+
     def exit(self):
         """Called when exiting this state"""
         # Track playtime
         playtime_seconds = time.time() - self.game_start_time
-        self.game.save_system.add_playtime(playtime_seconds, "total")
-    
+        self.game.save_system.add_playtime(playtime_seconds, "oregon_trail")
+
     def _save_state(self):
         """Save current game state"""
         state = {
@@ -115,7 +117,7 @@ class OregonTrailState(BaseState):
             "scroll_offset": getattr(self, 'scroll_offset', 0),
         }
         self.game.save_system.save_oregon_trail(state)
-    
+
     def _load_state(self, state):
         """Load game state"""
         self.m = state.get("m", 0)
@@ -142,7 +144,7 @@ class OregonTrailState(BaseState):
         self.scroll_offset = state.get("scroll_offset", 0)
         self.waiting_for_input = True
         self.input_buffer = ""
-    
+
     def _add_message(self, msg):
         """Add a message to display"""
         self.messages.append(msg)
@@ -151,7 +153,7 @@ class OregonTrailState(BaseState):
             self.messages = self.messages[-500:]
         # Auto-scroll to bottom when new message is added
         self.scroll_offset = 0
-    
+
     def _shooting_subroutine(self, d9):
         """Handle shooting mini-game"""
         words = ["BANG", "BLAM", "POW", "WHAM"]
@@ -161,24 +163,24 @@ class OregonTrailState(BaseState):
         self.waiting_for_input = True
         self.input_buffer = ""
         self._add_message(f"TYPE {self.shooting_target}")
-    
+
     def _process_shooting_result(self):
         """Process shooting mini-game result"""
         if not self.shooting_start_time:
             return 9
-        
+
         duration = time.time() - self.shooting_start_time
         b1 = (duration * 2) - (self.d9 - 1)
-        
+
         if self.input_buffer.upper().strip() != self.shooting_target:
             b1 = 9
-        
+
         self.shooting_start_time = None
         self.shooting_target = None
         self.phase = "main_game"  # Return to main game phase
         self.input_buffer = ""
         return b1
-    
+
     def _process_main_turn(self):
         """Process one turn of the main game loop"""
         # Date Logic
@@ -192,16 +194,16 @@ class OregonTrailState(BaseState):
         self._add_message("")
         self._add_message("")
         self._add_message(f"MONDAY {current_date} 1847")
-        
+
         # Check Supplies
-        if self.f < 0: self.f = 0
-        if self.b < 0: self.b = 0
-        if self.c < 0: self.c = 0
-        if self.m1 < 0: self.m1 = 0
-        
+        self.f = max(0, self.f)
+        self.b = max(0, self.b)
+        self.c = max(0, self.c)
+        self.m1 = max(0, self.m1)
+
         if self.f < 13:
             self._add_message("YOU'D BETTER DO SOME HUNTING OR BUY FOOD SOON!!!!")
-        
+
         # Doctor's Bills
         if self.s4 == 1 or self.k8 == 1:
             self.t -= 20
@@ -212,15 +214,15 @@ class OregonTrailState(BaseState):
             self._add_message("DOCTOR'S BILL IS $20")
             self.s4 = 0
             self.k8 = 0
-        
+
         if self.m9 == 1:
-            self._add_message(f"TOTAL MILEAGE: 950")
+            self._add_message("TOTAL MILEAGE: 950")
             self.m9 = 0
         else:
             self._add_message(f"TOTAL MILEAGE: {int(self.m)}")
-        
+
         self._add_message(f"FOOD: {int(self.f)}, AMMO: {int(self.b)}, CLOTHING: {int(self.c)}, MISC: {int(self.m1)}, CASH: ${int(self.t)}")
-        
+
         # Turn Options
         if self.x1 == -1:  # No Fort available
             self._add_message("DO YOU WANT TO (1) HUNT, OR (2) CONTINUE")
@@ -230,7 +232,7 @@ class OregonTrailState(BaseState):
             self._add_message("DO YOU WANT TO (1) STOP AT THE NEXT FORT, (2) HUNT, OR (3) CONTINUE")
             self.waiting_for_input = True
             self.input_buffer = ""
-    
+
     def _process_turn_choice(self, choice):
         """Process the player's turn choice"""
         if self.x1 == -1:  # No fort
@@ -239,12 +241,10 @@ class OregonTrailState(BaseState):
                 self._add_message("TOUGH---YOU NEED MORE BULLETS TO GO HUNTING")
                 x = 3
         else:
-            if choice == "1": x = 1
-            elif choice == "2": x = 2
-            else: x = 3
-        
+            x = {"1": 1, "2": 2}.get(choice, 3)
+
         self.x1 *= -1  # Toggle fort availability
-        
+
         if x == 1:  # Fort
             self._add_message("ENTER WHAT YOU WISH TO SPEND:")
             self.fort_purchasing = "food"
@@ -257,7 +257,7 @@ class OregonTrailState(BaseState):
             return  # Will continue after shooting
         else:  # Continue
             self._process_continue()
-    
+
     def _process_fort_purchase(self, value):
         """Process fort purchase input"""
         try:
@@ -267,21 +267,21 @@ class OregonTrailState(BaseState):
                     self.t -= val
                     self.f += int(val * 0.66)
                 self.fort_purchasing = "ammo"
-                self._add_message(f"AMMO: ")
+                self._add_message("AMMO: ")
                 self.input_buffer = ""
             elif self.fort_purchasing == "ammo":
                 if val <= self.t:
                     self.t -= val
                     self.b += int(val * 0.66 * 50)
                 self.fort_purchasing = "cloth"
-                self._add_message(f"CLOTHING: ")
+                self._add_message("CLOTHING: ")
                 self.input_buffer = ""
             elif self.fort_purchasing == "cloth":
                 if val <= self.t:
                     self.t -= val
                     self.c += int(val * 0.66)
                 self.fort_purchasing = "misc"
-                self._add_message(f"MISC: ")
+                self._add_message("MISC: ")
                 self.input_buffer = ""
             elif self.fort_purchasing == "misc":
                 if val <= self.t:
@@ -292,7 +292,7 @@ class OregonTrailState(BaseState):
                 self._process_continue()
         except ValueError:
             self._add_message("INVALID INPUT. TRY AGAIN.")
-    
+
     def _process_hunting_result(self):
         """Process hunting result after shooting"""
         b1 = self._process_shooting_result()
@@ -306,16 +306,16 @@ class OregonTrailState(BaseState):
             self._add_message("NICE SHOT--RIGHT ON TARGET--GOOD EATIN' TONIGHT!!")
             self.f += 48 - 2 * b1
             self.b -= int(10 + 3 * b1)
-        
+
         self._process_continue()
-    
+
     def _process_continue(self):
         """Continue with eating and movement"""
         self._add_message("DO YOU WANT TO EAT (1) POORLY (2) MODERATELY (3) WELL?")
         self.waiting_for_input = True
         self.input_buffer = ""
         self.phase = "eating"
-    
+
     def _continue_after_events(self):
         """Continue to next turn after events are processed"""
         # Events happen during a turn (after movement), so after processing an event,
@@ -323,7 +323,7 @@ class OregonTrailState(BaseState):
         # Clear the event flag to ensure we don't process events again
         self.current_event = None
         self.event_choice = None
-        
+
         # Advance to next day
         self.d3 += 1
         if self.m >= 2040:
@@ -334,7 +334,7 @@ class OregonTrailState(BaseState):
         else:
             # Start a new turn (this will ask for turn options)
             self._process_main_turn()
-    
+
     def _process_eating_choice(self, choice):
         """Process eating choice"""
         try:
@@ -346,20 +346,20 @@ class OregonTrailState(BaseState):
                     self._add_message("YOU RAN OUT OF FOOD AND STARVED TO DEATH.")
                     self.phase = "game_over"
                     return
-                
+
                 # Movement
                 self.m2 = self.m
                 self.m += 200 + (self.a - 220) / 5 + 10 * random.random()
-                
+
                 # Process random events
                 self._process_random_events()
-                
+
                 # If no event is waiting for input, continue to next turn
                 if not self.current_event:
                     self._continue_after_events()
         except ValueError:
             self._add_message("INVALID INPUT. ENTER 1, 2, OR 3.")
-    
+
     def _process_random_events(self):
         """Process random events that can occur"""
         # Riders Attack
@@ -369,14 +369,14 @@ class OregonTrailState(BaseState):
                 self._add_message("RIDERS AHEAD! THEY LOOK HOSTILE.")
             else:
                 self._add_message("RIDERS AHEAD! THEY DON'T LOOK HOSTILE.")
-            
+
             self._add_message("TACTICS: (1) RUN (2) ATTACK (3) CONTINUE (4) CIRCLE WAGONS")
             self.current_event = "riders"
             self.event_choice = None
             self.waiting_for_input = True
             self.input_buffer = ""
             return
-        
+
         # Random Turn Events
         r1 = 100 * random.random()
         if r1 < 6:
@@ -462,7 +462,7 @@ class OregonTrailState(BaseState):
                 self._add_message("YOU DIED OF ILLNESS.")
                 self.phase = "game_over"
                 return
-        
+
         # Mountains
         if self.m > 950:
             if random.random() * 10 > 9 - ((self.m/100-15)**2+72)/((self.m/100-15)**2+12):
@@ -478,7 +478,7 @@ class OregonTrailState(BaseState):
                 else:
                     self._add_message("THE GOING GETS SLOW")
                     self.m -= 45 + random.random() / 0.02
-            
+
             # South Pass/Blizzard Logic
             if self.f1 == 0:
                 self.f1 = 1
@@ -492,20 +492,20 @@ class OregonTrailState(BaseState):
                         self._add_message("YOU FROZE TO DEATH.")
                         self.phase = "game_over"
                         return
-    
+
     def _process_event_choice(self, choice):
         """Process choice for current event"""
         # Don't process if no event is active
         if not self.current_event:
             return
-        
+
         if self.current_event == "riders":
             try:
                 t1 = int(choice)
                 hostile = random.random() < 0.8
                 if random.random() < 0.2:
                     hostile = not hostile
-                
+
                 if hostile:
                     if t1 == 1:  # Run
                         self.m += 20
@@ -536,14 +536,14 @@ class OregonTrailState(BaseState):
                     elif t1 == 4:
                         self.m -= 20
                     self._add_message("THEY WERE FRIENDLY.")
-                
+
                 self.current_event = None
                 # Continue to next turn after processing riders
                 self._continue_after_events()
             except ValueError:
                 self._add_message("INVALID INPUT. ENTER 1-4.")
                 return
-        
+
         elif self.current_event == "riders_attack":
             # Shooting result already processed, just apply effects
             # b1 was calculated in handle_events before calling this
@@ -560,7 +560,7 @@ class OregonTrailState(BaseState):
                 delattr(self, '_last_shooting_result')
             self.current_event = None
             self._continue_after_events()
-        
+
         elif self.current_event == "riders_circle":
             if hasattr(self, '_last_shooting_result'):
                 b1 = self._last_shooting_result
@@ -569,7 +569,7 @@ class OregonTrailState(BaseState):
                 delattr(self, '_last_shooting_result')
             self.current_event = None
             self._continue_after_events()
-        
+
         elif self.current_event == "bandits":
             if hasattr(self, '_last_shooting_result'):
                 b1 = self._last_shooting_result
@@ -586,7 +586,7 @@ class OregonTrailState(BaseState):
                 delattr(self, '_last_shooting_result')
             self.current_event = None
             self._continue_after_events()
-        
+
         elif self.current_event == "animals":
             if hasattr(self, '_last_shooting_result'):
                 b1 = self._last_shooting_result
@@ -604,7 +604,7 @@ class OregonTrailState(BaseState):
                 delattr(self, '_last_shooting_result')
             self.current_event = None
             self._continue_after_events()
-    
+
     def handle_events(self, events):
         """Handle pygame events"""
         for event in events:
@@ -685,7 +685,7 @@ class OregonTrailState(BaseState):
                                 self.d9 = int(self.input_buffer)
                                 if not (1 <= self.d9 <= 5):
                                     self.d9 = 5
-                            except:
+                            except ValueError:
                                 self.d9 = 5
                             self.phase = "purchases"
                             self._add_message("")
@@ -695,7 +695,7 @@ class OregonTrailState(BaseState):
                         elif self.phase == "purchases":
                             if not hasattr(self, 'purchase_step'):
                                 self.purchase_step = 0
-                            
+
                             try:
                                 val = int(self.input_buffer)
                                 if self.purchase_step == 0:  # Oxen
@@ -758,7 +758,7 @@ class OregonTrailState(BaseState):
                         elif self.phase == "shooting_mini":
                             if self.current_event in ["riders_attack", "riders_circle", "bandits", "animals"]:
                                 # Process shooting result for event
-                                b1 = self._process_shooting_result()
+                                self._process_shooting_result()
                                 self._process_event_choice("")  # Process the event with shooting result
                             else:
                                 # Regular hunting
@@ -779,20 +779,20 @@ class OregonTrailState(BaseState):
                         # Regular input
                         if event.unicode.isprintable():
                             self.input_buffer += event.unicode
-    
+
     def update(self, dt):
         """Update game logic"""
         pass
-    
+
     def render(self):
         """Render the game state"""
         try:
             self.renderer.clear()
-            
+
             # Ensure messages list exists and has at least one message
             if not hasattr(self, 'messages') or not self.messages:
                 self.messages = ["DO YOU NEED INSTRUCTIONS (YES/NO)?"]
-            
+
             # Ensure other attributes exist
             if not hasattr(self, 'waiting_for_input'):
                 self.waiting_for_input = True
@@ -802,7 +802,7 @@ class OregonTrailState(BaseState):
                 self.phase = "instructions"
                 if not self.messages:
                     self.messages = ["DO YOU NEED INSTRUCTIONS (YES/NO)?"]
-            
+
             # Calculate available space for messages
             # Reserve lines: status (2 if main_game), help (1), input (1-2)
             reserved_lines = 1  # Help line always
@@ -813,20 +813,20 @@ class OregonTrailState(BaseState):
                     reserved_lines += 2  # Prompt + input
                 else:
                     reserved_lines += 1  # Input line
-            
+
             available_lines = self.renderer.char_height - reserved_lines
             max_scroll = max(0, len(self.messages) - available_lines)
-            
+
             # Clamp scroll offset
             if not hasattr(self, 'scroll_offset'):
                 self.scroll_offset = 0
             self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
-            
+
             # Get messages to display (from bottom, accounting for scroll)
             start_idx = len(self.messages) - available_lines - self.scroll_offset
             start_idx = max(0, start_idx)
             messages_to_display = self.messages[start_idx:]
-            
+
             # Render messages from top, filling available space
             y = 1
             for msg in messages_to_display[:available_lines]:
@@ -837,7 +837,7 @@ class OregonTrailState(BaseState):
                         msg = msg[:max_width]
                     self.renderer.write(1, y, msg, self.renderer.COLORS['fg'])
                     y += 1
-        
+
             # Show status at bottom (before input/help)
             status_start_y = self.renderer.char_height - reserved_lines
             if self.phase == "main_game" and self.m > 0:
@@ -845,7 +845,7 @@ class OregonTrailState(BaseState):
                 status_start_y += 1
                 self.renderer.write(1, status_start_y, f"FOOD: {int(self.f)}  AMMO: {int(self.b)}  CASH: ${int(self.t)}", self.renderer.COLORS['menu_normal'])
                 status_start_y += 1
-            
+
             # Display current input prompt and buffer
             if self.waiting_for_input:
                 input_y = status_start_y
@@ -862,7 +862,7 @@ class OregonTrailState(BaseState):
                     # Show input buffer with cursor - always show cursor to indicate input is expected
                     input_line = self.input_buffer + "_" if self.input_buffer else "_"
                     self.renderer.write(1, input_y, input_line, self.renderer.COLORS['menu_selected'])
-            
+
             # Instructions at bottom
             help_y = self.renderer.char_height - 1
             if self.phase == "shooting_mini":
@@ -872,7 +872,7 @@ class OregonTrailState(BaseState):
                 if self.scroll_offset > 0 or max_scroll > 0:
                     help_text += " | ↑↓: Scroll"
                 self.renderer.write(1, help_y, help_text, self.renderer.COLORS['menu_normal'])
-            
+
             # Actually render the frame
             self.renderer.render()
         except Exception as e:

@@ -1,4 +1,4 @@
-.PHONY: build clean clean-all install-deps test help release
+.PHONY: build clean clean-all install install-deps test lint run demo screenshots help release
 
 # Variables
 VENV = venv
@@ -16,13 +16,32 @@ help:
 	@echo "  release        - Build and upload a GitHub release (VERSION=x.y.z required)"
 	@echo "  clean          - Remove build artifacts only (preserves distributions)"
 	@echo "  clean-all      - Remove ALL build artifacts and distributions"
+	@echo "  install        - Create venv and install game + dev dependencies"
 	@echo "  install-deps   - Install PyInstaller in virtual environment"
-	@echo "  test           - Run unit tests"
+	@echo "  run            - Play the game"
+	@echo "  test           - Run the test suite (headless)"
+	@echo "  lint           - Run ruff"
+	@echo "  screenshots    - Regenerate docs/screenshots (headless)"
 	@echo "  help           - Show this help message"
 
-install-deps:
+$(VENV):
+	python3 -m venv $(VENV)
+
+install: $(VENV)
+	$(PIP) install -e ".[dev]"
+
+install-deps: $(VENV)
 	@echo "Installing PyInstaller and Pillow..."
 	$(PIP) install pyinstaller pillow
+
+run: $(VENV)
+	$(PYTHON) main.py
+
+lint: $(VENV)
+	$(PYTHON) -m ruff check src main.py tools
+
+screenshots: $(VENV)
+	SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy $(PYTHON) tools/screenshots.py docs/screenshots
 
 build: install-deps
 	@echo "Building executable: $(EXECUTABLE_NAME)"
@@ -103,6 +122,7 @@ build: install-deps
 		--windowed \
 		$$ICON_FLAG \
 		--add-data "src/assets:src/assets" \
+		--add-data "src/data:src/data" \
 		--hidden-import pygame \
 		--hidden-import RestrictedPython \
 		--hidden-import src.core \
@@ -163,11 +183,8 @@ with open('$$APP_PATH/Contents/Info.plist', 'wb') as f: \
 	@ls -1d $(DIST_DIR)/ascii-bullet-* 2>/dev/null | head -5 || echo "  (no previous builds found)"
 	@echo ""
 
-test:
-	@echo "Running unit tests..."
-	$(PYTHON) -m unittest discover -s src/tests -p "test_*.py" -v
-	@echo ""
-	@echo "Tests complete!"
+test: $(VENV)
+	SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy $(PYTHON) -m pytest
 
 clean:
 	@echo "Cleaning build artifacts (BUILD_DIR only, preserving distributions)..."

@@ -10,17 +10,18 @@ Ensures that:
 """
 
 import unittest
-from src.unix.filesystem import VirtualFileSystem
+
 from src.core.puzzle_system import (
-    check_puzzles,
-    get_unlocked_game_help_lines,
-    _check_minesweeper,
-    _check_set,
-    _check_dependency_puzzle,
     MINESWEEPER_DIR,
     SET_DIR,
     UNLOCKABLE_HELP,
+    _check_dependency_puzzle,
+    _check_minesweeper,
+    _check_set,
+    check_puzzles,
+    get_unlocked_game_help_lines,
 )
+from src.unix.filesystem import VirtualFileSystem
 
 
 class FakeSaveSystem:
@@ -157,11 +158,11 @@ class TestDependencyPuzzle(unittest.TestCase):
         self.fs.change_directory("/usr/local/deprecated")
         success, _ = self.fs.move_file("sys_control.py", "/bin/systemctl")
         self.assertTrue(success, "Should be able to move systemctl to /bin")
-        
+
         # Make it executable
         self.fs.change_directory("/bin")
         self.fs.set_permissions("systemctl", "rwxr-xr-x")
-        
+
         # Go back to root to check - should fail without override
         self.fs.change_directory("/")
         self.assertFalse(_check_dependency_puzzle(self.fs))
@@ -173,17 +174,17 @@ class TestDependencyPuzzle(unittest.TestCase):
         self.fs.change_directory("/usr/local/deprecated")
         success, _ = self.fs.move_file("sys_control.py", "/bin/systemctl")
         self.assertTrue(success)
-        
+
         # Make it executable
         self.fs.change_directory("/bin")
         self.fs.set_permissions("systemctl", "rwxr-xr-x")
-        
+
         # Create cooler.service.d directory and override
         self.fs.change_directory("/etc/systemd/system")
         self.fs.create_directory("cooler.service.d")
         self.fs.change_directory("cooler.service.d")
         self.fs.create_file("override.conf", "[Unit]\nConflicts=laser.service\n")
-        
+
         # Check root directory for puzzle completion
         self.fs.change_directory("/")
         self.assertTrue(_check_dependency_puzzle(self.fs))
@@ -191,26 +192,26 @@ class TestDependencyPuzzle(unittest.TestCase):
     def test_check_puzzles_systemctl_unlocks_oregon_trail(self):
         """check_puzzles() unlocks oregon_trail when dependency puzzle is solved"""
         save = FakeSaveSystem()
-        
+
         # Move systemctl to /bin
         self.fs.set_user('root')
         self.fs.change_directory("/usr/local/deprecated")
         self.fs.move_file("sys_control.py", "/bin/systemctl")
-        
+
         # Make it executable
         self.fs.change_directory("/bin")
         self.fs.set_permissions("systemctl", "rwxr-xr-x")
-        
+
         # Create cooler.service.d/override.conf
         self.fs.change_directory("/etc/systemd/system")
         self.fs.create_directory("cooler.service.d")
         self.fs.change_directory("cooler.service.d")
         self.fs.create_file("override.conf", "[Unit]\nConflicts=laser.service\n")
-        
+
         # Go to root and check puzzles with systemctl trigger
         self.fs.change_directory("/")
         out = check_puzzles(self.fs, save, "systemctl")
-        
+
         self.assertEqual(len(out), 1)
         self.assertEqual(out[0][0], "oregon_trail")
         self.assertIn("oregon_trail", out[0][1])

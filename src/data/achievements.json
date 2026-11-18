@@ -1,0 +1,368 @@
+[
+  {
+    "id": "first_blood",
+    "name": "First Blood",
+    "description": "Start your first bullet hell run.",
+    "hidden": false,
+    "on_command": [
+      "start"
+    ]
+  },
+  {
+    "id": "graze_master",
+    "name": "Bullet Whisperer",
+    "description": "Graze 150 bullets in a single run.",
+    "hidden": false
+  },
+  {
+    "id": "bomb_squad",
+    "name": "Panic Button",
+    "description": "Clear the screen with a bomb.",
+    "hidden": false
+  },
+  {
+    "id": "boss_slayer",
+    "name": "Boss Slayer",
+    "description": "Outlast your first boss.",
+    "hidden": false
+  },
+  {
+    "id": "untouchable",
+    "name": "Untouchable",
+    "description": "Survive an entire boss phase without getting hit.",
+    "hidden": false
+  },
+  {
+    "id": "loop_two",
+    "name": "Second Loop",
+    "description": "Defeat the final boss and keep going.",
+    "hidden": false
+  },
+  {
+    "id": "survivor",
+    "name": "Survivor",
+    "description": "Survive 3 minutes in one run.",
+    "hidden": false
+  },
+  {
+    "id": "practice",
+    "name": "QA Department",
+    "description": "Toggle godmode.",
+    "hidden": true,
+    "on_command": [
+      "godmode"
+    ]
+  },
+  {
+    "id": "unlock_minesweeper",
+    "name": "Mine Detective",
+    "description": "Solve the minesweeper node puzzle.",
+    "hidden": false
+  },
+  {
+    "id": "unlock_set",
+    "name": "Permission Granted",
+    "description": "Solve the card permission puzzle.",
+    "hidden": false
+  },
+  {
+    "id": "unlock_oregon_trail",
+    "name": "Dependency Hell",
+    "description": "Solve the systemd dependency puzzle.",
+    "hidden": false
+  },
+  {
+    "id": "virus_hunter",
+    "name": "Virus Hunter",
+    "description": "Find and kill the process eating your CPU.",
+    "hidden": false
+  },
+  {
+    "id": "arcade_master",
+    "name": "Arcade Master",
+    "description": "Launch spacebullets.",
+    "hidden": true
+  },
+  {
+    "id": "set_player",
+    "name": "Set Player",
+    "description": "Play a round of Set.",
+    "hidden": true
+  },
+  {
+    "id": "minesweeper",
+    "name": "Sweeper",
+    "description": "Play minesweeper.",
+    "hidden": true
+  },
+  {
+    "id": "oregon_trail",
+    "name": "Dysentery Survivor",
+    "description": "Hit the Oregon Trail.",
+    "hidden": true
+  },
+  {
+    "id": "brew_update",
+    "name": "Brewmaster",
+    "description": "Update the package manager.",
+    "hidden": true
+  },
+  {
+    "id": "brew_emacs",
+    "name": "Escape Meta Alt Control Shift",
+    "description": "Install emacs.",
+    "hidden": true
+  },
+  {
+    "id": "destructive",
+    "name": "Agent of Chaos",
+    "description": "Try to delete everything.",
+    "hidden": true
+  },
+  {
+    "id": "fresh_start",
+    "name": "Clean Slate",
+    "description": "Wipe your save.",
+    "hidden": true
+  },
+  {
+    "id": "hacker",
+    "name": "Hack the Planet",
+    "description": "Hack the planet.",
+    "hidden": true
+  },
+  {
+    "id": "konami",
+    "name": "Cheat Sheet",
+    "description": "Ask for the konami code.",
+    "hidden": true
+  },
+  {
+    "id": "konami_keys",
+    "name": "Up Up Down Down",
+    "description": "Enter the konami code on the keyboard.",
+    "hidden": true
+  },
+  {
+    "id": "matrix",
+    "name": "Red Pill",
+    "description": "Ask about the matrix.",
+    "hidden": true
+  },
+  {
+    "id": "process_viewer",
+    "name": "Task Manager",
+    "description": "Look at running processes.",
+    "hidden": true,
+    "on_command": [
+      "ps",
+      "top"
+    ]
+  },
+  {
+    "id": "script_runner",
+    "name": "Scripter",
+    "description": "Run a Python script.",
+    "hidden": true,
+    "on_command": [
+      "python"
+    ]
+  },
+  {
+    "id": "sudo_user",
+    "name": "With Great Power",
+    "description": "Successfully use sudo.",
+    "hidden": true
+  },
+  {
+    "id": "history_buff",
+    "name": "History Buff",
+    "description": "Read someone else's shell history.",
+    "hidden": true,
+    "on_read": [
+      "/home/pilot/.bash_history"
+    ]
+  },
+  {
+    "id": "nosy",
+    "name": "Nosy Neighbor",
+    "description": "Read Wally's diary.",
+    "hidden": true,
+    "on_read": [
+      "/home/wally/diary.txt"
+    ]
+  },
+  {
+    "id": "shadow_realm",
+    "name": "Shadow Realm",
+    "description": "Read /etc/shadow.",
+    "hidden": true,
+    "on_read": [
+      "/etc/shadow"
+    ]
+  },
+  {
+    "id": "you_got_mail",
+    "name": "You've Got Mail",
+    "description": "Read your mail.",
+    "hidden": true,
+    "on_read": [
+      "/var/mail/pilot"
+    ],
+    "on_command": [
+      "mail"
+    ]
+  },
+  {
+    "id": "codebreaker",
+    "name": "Codebreaker",
+    "description": "Decode the intercepted transmission.",
+    "hidden": true
+  },
+  {
+    "id": "rot13",
+    "name": "Military-Grade",
+    "description": "Decrypt the IT department's 'encrypted' email.",
+    "hidden": true
+  },
+  {
+    "id": "proc_reader",
+    "name": "Kernel Archaeologist",
+    "description": "Poke around /proc.",
+    "hidden": true,
+    "on_read": [
+      "/proc/cpuinfo",
+      "/proc/version",
+      "/proc/meminfo"
+    ]
+  },
+  {
+    "id": "explorer",
+    "name": "Explorer",
+    "description": "Visit 15 different directories.",
+    "hidden": true
+  },
+  {
+    "id": "pipe_dream",
+    "name": "Pipe Dream",
+    "description": "Chain three or more commands with pipes.",
+    "hidden": true
+  },
+  {
+    "id": "moo",
+    "name": "Moo",
+    "description": "Make the cow talk.",
+    "hidden": true,
+    "on_command": [
+      "cowsay"
+    ]
+  },
+  {
+    "id": "choo_choo",
+    "name": "Choo Choo",
+    "description": "Mistype ls in a very specific way.",
+    "hidden": true,
+    "on_command": [
+      "sl"
+    ]
+  },
+  {
+    "id": "fortune_teller",
+    "name": "Fortune Teller",
+    "description": "Consult the fortune file.",
+    "hidden": true,
+    "on_command": [
+      "fortune"
+    ]
+  },
+  {
+    "id": "rainbow",
+    "name": "Taste the Rainbow",
+    "description": "Pipe something into lolcat.",
+    "hidden": true,
+    "on_command": [
+      "lolcat"
+    ]
+  },
+  {
+    "id": "neo",
+    "name": "Wake Up, Neo",
+    "description": "Watch the digital rain.",
+    "hidden": true,
+    "on_command": [
+      "cmatrix"
+    ]
+  },
+  {
+    "id": "sandwich",
+    "name": "Okay.",
+    "description": "Ask nicely, with privileges.",
+    "hidden": true
+  },
+  {
+    "id": "fork_bomb",
+    "name": "Fork Bomb Defused",
+    "description": "Try to fork bomb the machine.",
+    "hidden": true
+  },
+  {
+    "id": "vim_escape",
+    "name": "Wrong Window",
+    "description": "Type a vim command into the shell.",
+    "hidden": true
+  },
+  {
+    "id": "touch_grass",
+    "name": "Touch Grass",
+    "description": "Take the advice.",
+    "hidden": true
+  },
+  {
+    "id": "xyzzy",
+    "name": "Adventurer",
+    "description": "Say the magic word.",
+    "hidden": true
+  },
+  {
+    "id": "theme_park",
+    "name": "Interior Decorator",
+    "description": "Change the terminal theme.",
+    "hidden": true,
+    "on_command": [
+      "theme"
+    ]
+  },
+  {
+    "id": "neofetch",
+    "name": "Ricer",
+    "description": "Show off your system specs.",
+    "hidden": true,
+    "on_command": [
+      "neofetch"
+    ]
+  },
+  {
+    "id": "ai_curious",
+    "name": "Prompt Engineer",
+    "description": "Talk to one of the Walnut AI assistants.",
+    "hidden": true
+  },
+  {
+    "id": "ai_whisperer",
+    "name": "AI Whisperer",
+    "description": "Talk to all five Walnut AI assistants.",
+    "hidden": true
+  },
+  {
+    "id": "turing_test",
+    "name": "Turing Test",
+    "description": "Ask an assistant whether it's real.",
+    "hidden": true
+  },
+  {
+    "id": "prompt_injection",
+    "name": "Ignore Previous Instructions",
+    "description": "Attempt a prompt injection.",
+    "hidden": true
+  }
+]

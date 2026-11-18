@@ -1,626 +1,410 @@
 """
-Save system for persistent game data
+Persistent save data.
 
-IMPORTANT: Save files are user-specific and stored in:
-- Development: ~/.ascii-bullet/save.json
-- Built games: ~/.ascii-bullet-release/save.json
+Save files are user-specific and live outside the repo:
 
-This ensures built games have separate saves from development.
-Each user gets their own save file. No save data is bundled with the game.
-When a new player runs the game, they automatically get a fresh save file.
+- Development:  ~/.ascii-bullet/save.json
+- Built game:   ~/.ascii-bullet-release/save.json
+- Override:     $ASCII_BULLET_SAVE_DIR/save.json  (used by tests and CI)
+
+Writes are atomic (temp file + rename) so a crash mid-save can't corrupt
+progress. Older or partial save files are deep-merged over the current
+defaults, so new keys never raise KeyError on load.
 """
 
+from __future__ import annotations
+
+import copy
 import json
 import os
 import sys
-from pathlib import Path
+import tempfile
 from datetime import datetime
+from pathlib import Path
+from typing import Any
 
-# Save file version - increment this when save format changes
-SAVE_VERSION = "0.1.0"
+SAVE_VERSION = "0.2.0"
+SAVE_DIR_ENV = "ASCII_BULLET_SAVE_DIR"
+MAX_HIGH_SCORES = 10
+MAX_HISTORY = 200
+
+_DEFAULT_STATS: dict[str, Any] = {
+    "bullets_dodged": 0,
+    "closest_call": 999,
+    "enemies_depleted": 0,
+    "grazes": 0,
+    "bombs_used": 0,
+    "bosses_defeated": 0,
+    "best_wave": 0,
+    "set_games_played": 0,
+    "set_games_won": 0,
+    "set_games_lost": 0,
+    "total_sets_found": 0,
+    "best_set_score": 0,
+    "asteroids_games_played": 0,
+    "asteroids_best_score": 0,
+    "asteroids_total_score": 0,
+    "asteroids_highest_stage": 0,
+    "ai_prompts": 0,
+    "total_playtime_seconds": 0,
+    "bullet_hell_playtime_seconds": 0,
+    "set_game_playtime_seconds": 0,
+    "asteroids_playtime_seconds": 0,
+    "oregon_trail_playtime_seconds": 0,
+    "minesweeper_playtime_seconds": 0,
+}
+
+
+def _deep_merge(defaults: dict, loaded: dict) -> dict:
+    """Return defaults overlaid with loaded values, recursing into dicts."""
+    merged = copy.deepcopy(defaults)
+    for key, value in loaded.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def default_save_dir() -> Path:
+    override = os.environ.get(SAVE_DIR_ENV)
+    if override:
+        return Path(override)
+    name = ".ascii-bullet-release" if getattr(sys, "frozen", False) else ".ascii-bullet"
+    return Path.home() / name
 
 
 class SaveSystem:
-    """Manages saving and loading game data"""
-    
-    def __init__(self):
-        """Initialize save system"""
-        # Get save file location (in user's home directory)
-        # Use different directories for development vs built games
-        home = Path.home()
-        
-        # Detect if running from PyInstaller bundle
-        is_built = getattr(sys, 'frozen', False)
-        
-        if is_built:
-            # Built game - use separate save directory
-            self.save_dir = home / ".ascii-bullet-release"
-        else:
-            # Development - use development save directory
-            self.save_dir = home / ".ascii-bullet"
-        
+    """Manages saving and loading game data."""
+
+    def __init__(self, save_dir: Path | str | None = None):
+        self.save_dir = Path(save_dir) if save_dir else default_save_dir()
         self.save_file = self.save_dir / "save.json"
-        
-        # Ensure save directory exists
-        self.save_dir.mkdir(exist_ok=True)
-        
-        # Load or initialize save data
-        # This will create a fresh save file if one doesn't exist
+        self.save_dir.mkdir(parents=True, exist_ok=True)
+        self._existed_at_start = self.save_file.exists()
         self.data = self._load()
-    
-    def _load(self):
-        """Load save data from file"""
-        if self.save_file.exists():
-            try:
-                with open(self.save_file, 'r') as f:
-                    data = json.load(f)
-                    # Check if save version matches (for future migrations)
-                    if data.get("version") != SAVE_VERSION:
-                        # Version mismatch - could add migration logic here
-                        # For now, we'll use the existing save but update version
-                        data["version"] = SAVE_VERSION
-                    return data
-            except (json.JSONDecodeError, IOError):
-                # Corrupted save file, start fresh
-                return self._default_save_data()
-        else:
-            # No save file exists - create fresh save for new user
+
+    # ------------------------------------------------------------------ io
+    def _load(self) -> dict:
+        if not self.save_file.exists():
             return self._default_save_data()
-    
-    def _default_save_data(self):
-        """Get default save data structure - always returns a fresh save state"""
+        try:
+            with open(self.save_file, encoding="utf-8") as f:
+                loaded = json.load(f)
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+            # Corrupted save: keep a copy for forensics and start fresh.
+            try:
+                self.save_file.replace(self.save_file.with_suffix(".corrupt.json"))
+            except OSError:
+                pass
+            return self._default_save_data()
+        if not isinstance(loaded, dict):
+            return self._default_save_data()
+        data = _deep_merge(self._default_save_data(), loaded)
+        data["version"] = SAVE_VERSION
+        return data
+
+    @staticmethod
+    def _default_save_data() -> dict:
+        now = datetime.now().isoformat()
         return {
             "version": SAVE_VERSION,
-            "created": datetime.now().isoformat(),
-            "last_played": datetime.now().isoformat(),
-            
-            # Scores
-            "high_scores": [],  # List of {score, time, date}
+            "created": now,
+            "last_played": now,
+            "high_scores": [],  # [{score, time, date, wave}]
             "total_games_played": 0,
             "total_time_survived": 0,
-            
-            # Discoveries
-            "secret_commands_found": [],  # List of secret command IDs
-            "installed_packages": [],  # List of brew-installed package names
-            "virus_killed": False,  # Whether the player killed the virus process
-            "unlocked_games": [],  # Puzzle-gated games: e.g. ["minesweeper", "set"]
-            "intro_shown": False,  # Whether the intro sequence has been shown
-            "save_prompt_shown": False,  # Whether we've asked about using existing save (built games only)
-            "filesystem_explored": {
-                "directories_visited": [],
-                "files_read": []
-            },
-            
-            # Stats
-            "stats": {
-                "bullets_dodged": 0,
-                "closest_call": 999,  # Closest distance to a bullet
-                "enemies_depleted": 0,  # Enemies that ran out of ammo
-                # Set game stats
-                "set_games_played": 0,
-                "set_games_won": 0,
-                "set_games_lost": 0,
-                "total_sets_found": 0,
-                "best_set_score": 0,  # Best player sets in a single game
-                # Asteroids game stats
-                "asteroids_games_played": 0,
-                "asteroids_best_score": 0,
-                "asteroids_total_score": 0,
-                "asteroids_highest_stage": 0,
-                # Playtime tracking
-                "total_playtime_seconds": 0,
-                "bullet_hell_playtime_seconds": 0,
-                "set_game_playtime_seconds": 0,
-                "asteroids_playtime_seconds": 0,
-            },
-            
-            # Settings
-            "settings": {
-                "terminal_width": 80,
-                "terminal_height": 75,
-                "font_size": 12,
-            },
-            
-            # Filesystem state
-            "filesystem": None,  # Will store user modifications
-            
-            # Command history (only commands, not outputs)
-            "command_history": [],  # List of command strings
-            
-            # Systemd state
-            "systemd_states": {},  # Service name -> state mapping
-            "systemd_enabled": []  # List of enabled service names
+            # Achievement / secret IDs (kept under the legacy key for old saves)
+            "secret_commands_found": [],
+            "installed_packages": [],
+            "virus_killed": False,
+            "unlocked_games": [],
+            "intro_shown": False,
+            "save_prompt_shown": False,
+            "filesystem_explored": {"directories_visited": [], "files_read": []},
+            "stats": copy.deepcopy(_DEFAULT_STATS),
+            "settings": {"crt": True, "screen_shake": True},
+            "filesystem": None,
+            "command_history": [],
+            "systemd_states": {},
+            "systemd_enabled": [],
+            "bullet_hell": {"checkpoint_wave": 0},
+            "flags": {},
         }
-    
-    def save(self):
-        """Write save data to file"""
+
+    def save(self) -> bool:
+        """Atomically write save data to disk."""
         self.data["last_played"] = datetime.now().isoformat()
-        
         try:
-            with open(self.save_file, 'w') as f:
+            fd, tmp = tempfile.mkstemp(dir=self.save_dir, prefix=".save-", suffix=".tmp")
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(self.data, f, indent=2)
+            os.replace(tmp, self.save_file)
+            return True
+        except (OSError, TypeError, ValueError):
+            try:
+                os.unlink(tmp)  # type: ignore[possibly-undefined]
+            except (OSError, UnboundLocalError):
+                pass
+            return False
+
+    def export_save(self, filepath) -> bool:
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
                 json.dump(self.data, f, indent=2)
             return True
-        except IOError:
+        except OSError:
             return False
-    
-    # High Scores
-    def add_score(self, score, time_survived):
-        """
-        Add a score to high scores list
-        
-        Args:
-            score: Final score
-            time_survived: Time survived in milliseconds
-        """
+
+    def get_save_location(self) -> str:
+        return str(self.save_file)
+
+    # ------------------------------------------------------------- scores
+    def add_score(self, score: int, time_survived: int, wave: int = 0) -> None:
         entry = {
-            "score": score,
-            "time": time_survived,
-            "date": datetime.now().isoformat()
+            "score": int(score),
+            "time": int(time_survived),
+            "wave": int(wave),
+            "date": datetime.now().isoformat(),
         }
-        
-        self.data["high_scores"].append(entry)
-        
-        # Sort by score descending
-        self.data["high_scores"].sort(key=lambda x: x["score"], reverse=True)
-        
-        # Keep only top 10
-        self.data["high_scores"] = self.data["high_scores"][:10]
-        
+        scores = self.data["high_scores"]
+        scores.append(entry)
+        scores.sort(key=lambda x: x["score"], reverse=True)
+        del scores[MAX_HIGH_SCORES:]
         self.data["total_games_played"] += 1
-        self.data["total_time_survived"] += time_survived
-        
+        self.data["total_time_survived"] += int(time_survived)
         self.save()
-    
-    def get_high_scores(self, limit=10):
-        """Get top high scores"""
+
+    def get_high_scores(self, limit: int = MAX_HIGH_SCORES) -> list:
         return self.data["high_scores"][:limit]
-    
-    def is_high_score(self, score):
-        """Check if score makes it to top 10"""
-        if len(self.data["high_scores"]) < 10:
-            return True
-        return score > self.data["high_scores"][-1]["score"]
-    
-    # Secret Commands
-    def add_secret_found(self, secret_id):
-        """Record a secret command being found"""
-        if secret_id not in self.data["secret_commands_found"]:
-            self.data["secret_commands_found"].append(secret_id)
-            self.save()
-            return True  # Newly found
-        return False  # Already found
-    
-    def get_secrets_found(self):
-        """Get list of found secret command IDs"""
-        return self.data["secret_commands_found"]
-    
-    def get_secret_count(self):
-        """Get number of secrets found"""
-        return len(self.data["secret_commands_found"])
-    
-    def install_package(self, package_name):
-        """
-        Mark a package as installed
-        
-        Args:
-            package_name: Name of the package to install
-            
-        Returns:
-            bool: True if newly installed, False if already installed
-        """
-        if "installed_packages" not in self.data:
-            self.data["installed_packages"] = []
-        
-        if package_name not in self.data["installed_packages"]:
-            self.data["installed_packages"].append(package_name)
-            self.save()
-            return True
-        return False
-    
-    def is_package_installed(self, package_name):
-        """
-        Check if a package is installed
-        
-        Args:
-            package_name: Name of the package to check
-            
-        Returns:
-            bool: True if installed, False otherwise
-        """
-        if "installed_packages" not in self.data:
+
+    def is_high_score(self, score: int) -> bool:
+        scores = self.data["high_scores"]
+        return score > 0 and (len(scores) < MAX_HIGH_SCORES or score > scores[-1]["score"])
+
+    def get_best_score(self) -> int:
+        scores = self.data["high_scores"]
+        return scores[0]["score"] if scores else 0
+
+    # ---------------------------------------------- achievements / secrets
+    def add_secret_found(self, secret_id: str) -> bool:
+        """Record an achievement. Returns True if newly unlocked."""
+        found = self.data["secret_commands_found"]
+        if secret_id in found:
             return False
+        found.append(secret_id)
+        self.save()
+        return True
+
+    def has_secret(self, secret_id: str) -> bool:
+        return secret_id in self.data["secret_commands_found"]
+
+    def get_secrets_found(self) -> list:
+        return self.data["secret_commands_found"]
+
+    def get_secret_count(self) -> int:
+        return len(self.data["secret_commands_found"])
+
+    # ----------------------------------------------------------- packages
+    def install_package(self, package_name: str) -> bool:
+        pkgs = self.data["installed_packages"]
+        if package_name in pkgs:
+            return False
+        pkgs.append(package_name)
+        self.save()
+        return True
+
+    def is_package_installed(self, package_name: str) -> bool:
         return package_name in self.data["installed_packages"]
-    
-    def get_installed_packages(self):
-        """Get list of installed package names"""
-        if "installed_packages" not in self.data:
-            return []
+
+    def get_installed_packages(self) -> list:
         return self.data["installed_packages"]
-    
-    # Virus status
-    def mark_virus_killed(self):
-        """Mark that the player killed the virus"""
+
+    # ------------------------------------------------------ progress flags
+    def mark_virus_killed(self) -> None:
         self.data["virus_killed"] = True
         self.save()
-    
-    def is_virus_killed(self):
-        """Check if the virus has been killed"""
-        return self.data.get("virus_killed", False)
-    
-    def is_game_unlocked(self, game_key):
-        """Check if a puzzle-gated game (e.g. 'minesweeper', 'set') is unlocked."""
-        return game_key in self.data.get("unlocked_games", [])
-    
-    def unlock_game(self, game_key):
-        """Unlock a puzzle-gated game and persist."""
-        u = self.data.get("unlocked_games", [])
-        if game_key not in u:
-            u = list(u) + [game_key]
-            self.data["unlocked_games"] = u
+
+    def is_virus_killed(self) -> bool:
+        return bool(self.data.get("virus_killed", False))
+
+    def is_game_unlocked(self, game_key: str) -> bool:
+        return game_key in self.data["unlocked_games"]
+
+    def unlock_game(self, game_key: str) -> None:
+        if game_key not in self.data["unlocked_games"]:
+            self.data["unlocked_games"].append(game_key)
             self.save()
-    
-    # Intro sequence
-    def has_intro_been_shown(self):
-        """Check if the intro sequence has been shown"""
-        return self.data.get("intro_shown", False)
-    
-    def mark_intro_shown(self):
-        """Mark that the intro sequence has been shown"""
+
+    def get_flag(self, name: str, default: Any = None) -> Any:
+        return self.data["flags"].get(name, default)
+
+    def set_flag(self, name: str, value: Any) -> None:
+        self.data["flags"][name] = value
+        self.save()
+
+    # -------------------------------------------------------------- intro
+    def has_intro_been_shown(self) -> bool:
+        return bool(self.data.get("intro_shown", False))
+
+    def mark_intro_shown(self) -> None:
         self.data["intro_shown"] = True
         self.save()
-    
-    # Save prompt (for built games)
-    def should_prompt_for_existing_save(self):
-        """
-        Check if we should prompt the user about using an existing save file.
-        Only applies to built games that have an existing save file.
-        """
-        import sys
-        is_built = getattr(sys, 'frozen', False)
-        
-        if not is_built:
-            # Development mode - never prompt
+
+    def should_prompt_for_existing_save(self) -> bool:
+        """Built games ask once whether to keep a save found on first launch."""
+        if not getattr(sys, "frozen", False):
             return False
-        
-        # Built game: check if save exists and we haven't asked yet
-        if self.save_file.exists() and not self.data.get("save_prompt_shown", False):
-            return True
-        
-        return False
-    
-    def mark_save_prompt_shown(self):
-        """Mark that we've shown the save prompt (user won't be asked again)"""
+        return self._existed_at_start and not self.data.get("save_prompt_shown", False)
+
+    def mark_save_prompt_shown(self) -> None:
         self.data["save_prompt_shown"] = True
         self.save()
-    
-    def has_existing_save(self):
-        """Check if a save file exists"""
+
+    def has_existing_save(self) -> bool:
         return self.save_file.exists()
-    
-    # Filesystem Exploration
-    def mark_directory_visited(self, path):
-        """Record a directory being visited"""
-        if path not in self.data["filesystem_explored"]["directories_visited"]:
-            self.data["filesystem_explored"]["directories_visited"].append(path)
+
+    # -------------------------------------------------------- exploration
+    def mark_directory_visited(self, path: str) -> None:
+        visited = self.data["filesystem_explored"]["directories_visited"]
+        if path not in visited:
+            visited.append(path)
             self.save()
-    
-    def mark_file_read(self, filepath):
-        """Record a file being read"""
-        if filepath not in self.data["filesystem_explored"]["files_read"]:
-            self.data["filesystem_explored"]["files_read"].append(filepath)
+
+    def mark_file_read(self, filepath: str) -> None:
+        read = self.data["filesystem_explored"]["files_read"]
+        if filepath not in read:
+            read.append(filepath)
             self.save()
-    
-    def get_exploration_stats(self):
-        """Get exploration statistics"""
+
+    def get_exploration_stats(self) -> dict:
+        explored = self.data["filesystem_explored"]
         return {
-            "dirs_visited": len(self.data["filesystem_explored"]["directories_visited"]),
-            "files_read": len(self.data["filesystem_explored"]["files_read"])
+            "dirs_visited": len(explored["directories_visited"]),
+            "files_read": len(explored["files_read"]),
         }
-    
-    # Stats
-    def update_stat(self, stat_name, value):
-        """
-        Update a statistic
-        
-        Args:
-            stat_name: Name of stat to update
-            value: New value (or increment for some stats)
-        """
-        if stat_name in self.data["stats"]:
-            if stat_name == "closest_call":
-                # Keep the closest distance
-                self.data["stats"][stat_name] = min(self.data["stats"][stat_name], value)
-            else:
-                # For counters, add to existing
-                self.data["stats"][stat_name] += value
-            self.save()
-    
-    def record_set_game(self, player_sets, computer_sets, won):
-        """
-        Record a Set game result
-        
-        Args:
-            player_sets: Number of sets found by player
-            computer_sets: Number of sets found by computer
-            won: True if player won, False if lost
-        """
-        # Initialize stats if they don't exist
-        if "set_games_played" not in self.data["stats"]:
-            self.data["stats"]["set_games_played"] = 0
-            self.data["stats"]["set_games_won"] = 0
-            self.data["stats"]["set_games_lost"] = 0
-            self.data["stats"]["total_sets_found"] = 0
-            self.data["stats"]["best_set_score"] = 0
-        
-        self.data["stats"]["set_games_played"] += 1
-        if won:
-            self.data["stats"]["set_games_won"] += 1
+
+    # -------------------------------------------------------------- stats
+    def update_stat(self, stat_name: str, value) -> None:
+        stats = self.data["stats"]
+        if stat_name == "closest_call":
+            stats[stat_name] = min(stats.get(stat_name, 999), value)
+        elif stat_name in ("best_wave",):
+            stats[stat_name] = max(stats.get(stat_name, 0), value)
         else:
-            self.data["stats"]["set_games_lost"] += 1
-        
-        self.data["stats"]["total_sets_found"] += player_sets
-        
-        # Update best score if this is better
-        if player_sets > self.data["stats"]["best_set_score"]:
-            self.data["stats"]["best_set_score"] = player_sets
-        
+            stats[stat_name] = stats.get(stat_name, 0) + value
         self.save()
-    
-    def record_asteroids_game(self, score, stage):
-        """
-        Record an Asteroids game result
-        
-        Args:
-            score: Final score achieved
-            stage: Highest stage reached
-        """
-        # Initialize stats if they don't exist
-        if "asteroids_games_played" not in self.data["stats"]:
-            self.data["stats"]["asteroids_games_played"] = 0
-            self.data["stats"]["asteroids_best_score"] = 0
-            self.data["stats"]["asteroids_total_score"] = 0
-            self.data["stats"]["asteroids_highest_stage"] = 0
-        
-        self.data["stats"]["asteroids_games_played"] += 1
-        self.data["stats"]["asteroids_total_score"] += score
-        
-        # Update best score if this is better
-        if score > self.data["stats"]["asteroids_best_score"]:
-            self.data["stats"]["asteroids_best_score"] = score
-        
-        # Update highest stage if this is better
-        if stage > self.data["stats"]["asteroids_highest_stage"]:
-            self.data["stats"]["asteroids_highest_stage"] = stage
-        
+
+    def record_set_game(self, player_sets: int, computer_sets: int, won: bool) -> None:
+        stats = self.data["stats"]
+        stats["set_games_played"] += 1
+        stats["set_games_won" if won else "set_games_lost"] += 1
+        stats["total_sets_found"] += player_sets
+        stats["best_set_score"] = max(stats["best_set_score"], player_sets)
         self.save()
-    
-    def add_playtime(self, seconds, game_type="total"):
-        """
-        Add playtime to stats
-        
-        Args:
-            seconds: Number of seconds to add
-            game_type: "total", "bullet_hell", "set_game", or "asteroids"
-        """
-        if "stats" not in self.data:
-            self.data["stats"] = {}
-        
-        if game_type == "total":
-            if "total_playtime_seconds" not in self.data["stats"]:
-                self.data["stats"]["total_playtime_seconds"] = 0
-            self.data["stats"]["total_playtime_seconds"] += seconds
-        elif game_type == "bullet_hell":
-            if "bullet_hell_playtime_seconds" not in self.data["stats"]:
-                self.data["stats"]["bullet_hell_playtime_seconds"] = 0
-            self.data["stats"]["bullet_hell_playtime_seconds"] += seconds
-            # Also add to total
-            if "total_playtime_seconds" not in self.data["stats"]:
-                self.data["stats"]["total_playtime_seconds"] = 0
-            self.data["stats"]["total_playtime_seconds"] += seconds
-        elif game_type == "set_game":
-            if "set_game_playtime_seconds" not in self.data["stats"]:
-                self.data["stats"]["set_game_playtime_seconds"] = 0
-            self.data["stats"]["set_game_playtime_seconds"] += seconds
-            # Also add to total
-            if "total_playtime_seconds" not in self.data["stats"]:
-                self.data["stats"]["total_playtime_seconds"] = 0
-            self.data["stats"]["total_playtime_seconds"] += seconds
-        elif game_type == "asteroids":
-            if "asteroids_playtime_seconds" not in self.data["stats"]:
-                self.data["stats"]["asteroids_playtime_seconds"] = 0
-            self.data["stats"]["asteroids_playtime_seconds"] += seconds
-            # Also add to total
-            if "total_playtime_seconds" not in self.data["stats"]:
-                self.data["stats"]["total_playtime_seconds"] = 0
-            self.data["stats"]["total_playtime_seconds"] += seconds
-        
+
+    def record_asteroids_game(self, score: int, stage: int) -> None:
+        stats = self.data["stats"]
+        stats["asteroids_games_played"] += 1
+        stats["asteroids_total_score"] += score
+        stats["asteroids_best_score"] = max(stats["asteroids_best_score"], score)
+        stats["asteroids_highest_stage"] = max(stats["asteroids_highest_stage"], stage)
         self.save()
-    
-    def get_stat(self, stat_name):
-        """Get a specific stat"""
+
+    def add_playtime(self, seconds: float, game_type: str = "total") -> None:
+        """Add playtime.
+
+        ``total`` is wall-clock time tracked by the main loop; per-game buckets
+        are tracked separately and do NOT add to total (that double counted).
+        """
+        if seconds <= 0:
+            return
+        key = f"{game_type}_playtime_seconds"
+        stats = self.data["stats"]
+        stats[key] = stats.get(key, 0) + seconds
+        self.save()
+
+    def get_stat(self, stat_name: str):
         return self.data["stats"].get(stat_name, 0)
-    
-    def get_all_stats(self):
-        """Get all statistics"""
+
+    def get_all_stats(self) -> dict:
         return self.data["stats"].copy()
-    
-    # Settings
-    def update_setting(self, setting_name, value):
-        """Update a setting"""
-        if setting_name in self.data["settings"]:
-            self.data["settings"][setting_name] = value
-            self.save()
-    
-    def get_setting(self, setting_name, default=None):
-        """Get a setting value"""
+
+    # ----------------------------------------------------------- settings
+    def update_setting(self, setting_name: str, value) -> None:
+        self.data["settings"][setting_name] = value
+        self.save()
+
+    def get_setting(self, setting_name: str, default=None):
         return self.data["settings"].get(setting_name, default)
-    
-    # Utility
-    def get_save_location(self):
-        """Get the save file path as a string"""
-        return str(self.save_file)
-    
-    # Filesystem State
-    def save_filesystem(self, filesystem_state):
-        """Save filesystem state"""
+
+    # --------------------------------------------------------- filesystem
+    def save_filesystem(self, filesystem_state: dict) -> None:
         self.data["filesystem"] = filesystem_state
         self.save()
-    
+
     def get_filesystem_state(self):
-        """Get saved filesystem state"""
-        return self.data.get("filesystem", None)
-    
-    def reset_save(self):
-        """Reset all save data (destructive!)"""
+        return self.data.get("filesystem")
+
+    # -------------------------------------------------------------- reset
+    def reset_save(self) -> None:
         self.data = self._default_save_data()
         self.save()
-    
-    def reset_filesystem(self):
-        """Reset only filesystem state"""
+
+    def reset_filesystem(self) -> None:
         self.data["filesystem"] = None
         self.save()
-    
-    def reset_stats(self):
-        """Reset only game statistics"""
-        default_stats = {
-            "bullets_dodged": 0,
-            "closest_call": 999,
-            "enemies_depleted": 0,
-            "set_games_played": 0,
-            "set_games_won": 0,
-            "set_games_lost": 0,
-            "total_sets_found": 0,
-            "best_set_score": 0,
-            "asteroids_games_played": 0,
-            "asteroids_best_score": 0,
-            "asteroids_total_score": 0,
-            "asteroids_highest_stage": 0,
-            "total_playtime_seconds": 0,
-            "bullet_hell_playtime_seconds": 0,
-            "set_game_playtime_seconds": 0,
-            "asteroids_playtime_seconds": 0,
-        }
-        self.data["stats"] = default_stats
+
+    def reset_stats(self) -> None:
+        self.data["stats"] = copy.deepcopy(_DEFAULT_STATS)
         self.data["high_scores"] = []
         self.data["total_games_played"] = 0
         self.data["total_time_survived"] = 0
+        self.data["bullet_hell"] = {"checkpoint_wave": 0}
         self.save()
-    
-    def add_playtime(self, seconds, game_type="total"):
-        """
-        Add playtime to stats
-        
-        Args:
-            seconds: Number of seconds to add
-            game_type: "total", "bullet_hell", or "set_game"
-        """
-        if "stats" not in self.data:
-            self.data["stats"] = {}
-        
-        if game_type == "total":
-            if "total_playtime_seconds" not in self.data["stats"]:
-                self.data["stats"]["total_playtime_seconds"] = 0
-            self.data["stats"]["total_playtime_seconds"] += seconds
-        elif game_type == "bullet_hell":
-            if "bullet_hell_playtime_seconds" not in self.data["stats"]:
-                self.data["stats"]["bullet_hell_playtime_seconds"] = 0
-            self.data["stats"]["bullet_hell_playtime_seconds"] += seconds
-            # Also add to total
-            if "total_playtime_seconds" not in self.data["stats"]:
-                self.data["stats"]["total_playtime_seconds"] = 0
-            self.data["stats"]["total_playtime_seconds"] += seconds
-        elif game_type == "set_game":
-            if "set_game_playtime_seconds" not in self.data["stats"]:
-                self.data["stats"]["set_game_playtime_seconds"] = 0
-            self.data["stats"]["set_game_playtime_seconds"] += seconds
-            # Also add to total
-            if "total_playtime_seconds" not in self.data["stats"]:
-                self.data["stats"]["total_playtime_seconds"] = 0
-            self.data["stats"]["total_playtime_seconds"] += seconds
-        
+
+    # -------------------------------------------------------- bullet hell
+    def get_checkpoint_wave(self) -> int:
+        return int(self.data["bullet_hell"].get("checkpoint_wave", 0))
+
+    def set_checkpoint_wave(self, wave: int) -> None:
+        current = self.get_checkpoint_wave()
+        if wave > current:
+            self.data["bullet_hell"]["checkpoint_wave"] = int(wave)
+            self.save()
+
+    # ------------------------------------------------------- oregon trail
+    def save_oregon_trail(self, game_state) -> None:
+        self.data.setdefault("oregon_trail", {})["game_state"] = game_state
         self.save()
-    
-    def export_save(self, filepath):
-        """Export save data to a specific file"""
-        try:
-            with open(filepath, 'w') as f:
-                json.dump(self.data, f, indent=2)
-            return True
-        except IOError:
-            return False
-    
-    # Oregon Trail save/load
-    def save_oregon_trail(self, game_state):
-        """Save Oregon Trail game state"""
-        if "oregon_trail" not in self.data:
-            self.data["oregon_trail"] = {}
-        self.data["oregon_trail"]["game_state"] = game_state
-        self.save()
-    
+
     def load_oregon_trail(self):
-        """Load Oregon Trail game state"""
-        return self.data.get("oregon_trail", {}).get("game_state", None)
-    
-    def clear_oregon_trail(self):
-        """Clear saved Oregon Trail game state"""
+        return self.data.get("oregon_trail", {}).get("game_state")
+
+    def clear_oregon_trail(self) -> None:
         if "oregon_trail" in self.data:
             del self.data["oregon_trail"]
             self.save()
-    
-    # Command History
-    def get_command_history(self, max_items=100):
-        """
-        Get saved command history
-        
-        Args:
-            max_items: Maximum number of commands to return (most recent)
-            
-        Returns:
-            List of command strings
-        """
-        history = self.data.get("command_history", [])
-        # Return most recent items, limited to max_items
-        return history[-max_items:] if len(history) > max_items else history
-    
-    def save_command_history(self, command_history, max_items=100):
-        """
-        Save command history (only commands, not outputs)
-        
-        Args:
-            command_history: List of command strings
-            max_items: Maximum number of commands to save
-        """
-        # Only save commands, limit to most recent max_items
-        commands_to_save = command_history[-max_items:] if len(command_history) > max_items else command_history
-        self.data["command_history"] = commands_to_save
+
+    # ---------------------------------------------------- command history
+    def get_command_history(self, max_items: int = MAX_HISTORY) -> list:
+        return self.data["command_history"][-max_items:]
+
+    def save_command_history(self, command_history: list, max_items: int = MAX_HISTORY) -> None:
+        self.data["command_history"] = list(command_history[-max_items:])
         self.save()
-    
-    # Systemd state persistence
-    def save_systemd_states(self, states):
-        """
-        Save systemd service states
-        
-        Args:
-            states: Dictionary mapping service names to states
-        """
+
+    # ------------------------------------------------------------ systemd
+    def save_systemd_states(self, states: dict) -> None:
         self.data["systemd_states"] = states
         self.save()
-    
+
     def get_systemd_states(self):
-        """Get saved systemd service states"""
-        return self.data.get("systemd_states", None)
-    
-    def save_systemd_enabled(self, enabled_services):
-        """
-        Save list of enabled systemd services
-        
-        Args:
-            enabled_services: List of enabled service names
-        """
+        return self.data.get("systemd_states")
+
+    def save_systemd_enabled(self, enabled_services: list) -> None:
         self.data["systemd_enabled"] = enabled_services
         self.save()
-    
-    def get_systemd_enabled(self):
-        """Get saved list of enabled systemd services"""
-        return self.data.get("systemd_enabled", None)
 
+    def get_systemd_enabled(self):
+        return self.data.get("systemd_enabled")

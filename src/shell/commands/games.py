@@ -6,21 +6,40 @@ from src.core.achievements import load_achievements
 from src.shell.registry import command
 from src.shell.text import Styled
 
-# name typed after `start` -> (unlock check, achievement id, state factory path)
+
+# Static imports (inside functions to keep startup fast) so PyInstaller can find them.
+def _galaga():
+    from src.states.games.galaga_gameplay import GalagaGameplayState
+
+    return GalagaGameplayState
+
+
+def _minesweeper():
+    from src.states.games.minesweeper import MinesweeperState
+
+    return MinesweeperState
+
+
+def _set_game():
+    from src.states.games.set_game import SetGameState
+
+    return SetGameState
+
+
+def _oregon():
+    from src.states.games.oregon_trail import OregonTrailState
+
+    return OregonTrailState
+
+
+# name typed after `start` -> (unlock key, achievement id, state class loader)
 _EXTRA_GAMES = {
-    "spacebullets": ("virus", "arcade_master", "src.states.games.galaga_gameplay:GalagaGameplayState"),
-    "minesweeper": ("minesweeper", "minesweeper", "src.states.games.minesweeper:MinesweeperState"),
-    "set": ("set", "set_player", "src.states.games.set_game:SetGameState"),
-    "oregon": ("oregon_trail", "oregon_trail", "src.states.games.oregon_trail:OregonTrailState"),
-    "oregon_trail": ("oregon_trail", "oregon_trail", "src.states.games.oregon_trail:OregonTrailState"),
+    "spacebullets": ("virus", "arcade_master", _galaga),
+    "minesweeper": ("minesweeper", "minesweeper", _minesweeper),
+    "set": ("set", "set_player", _set_game),
+    "oregon": ("oregon_trail", "oregon_trail", _oregon),
+    "oregon_trail": ("oregon_trail", "oregon_trail", _oregon),
 }
-
-
-def _import(path: str):
-    import importlib
-
-    module, _, attr = path.partition(":")
-    return getattr(importlib.import_module(module), attr)
 
 
 def _launch_bullet_hell(ctx, start_wave: int = 1, demo: bool = False):
@@ -50,7 +69,7 @@ def start(ctx):
     if not entry or not unlocked:
         ctx.err(f"start: '{name}': no such game (yet)")
         return 1
-    state_cls = _import(entry[2])
+    state_cls = entry[2]()
     ctx.achieve(entry[1])
     ctx.launch(lambda game, back: state_cls(game, back))
     return 0

@@ -9,9 +9,12 @@ from src.states.base_state import BaseState
 class TopViewerState(BaseState):
     """Interactive process viewer (like Unix top command)"""
     
-    def __init__(self, game, process_manager, previous_state):
+    def __init__(self, game, process_manager, previous_state, on_kill=None):
         super().__init__(game)
         self.process_manager = process_manager
+        self.on_kill = on_kill  # callable(pid) -> None, runs the shell's `kill`
+        self.selected_pid = None
+        self.status = ""
         self.previous_state = previous_state
         self.renderer = game.renderer
         
@@ -48,18 +51,37 @@ class TopViewerState(BaseState):
                 if event.key == pygame.K_q or event.key == pygame.K_ESCAPE:
                     # Quit top viewer
                     self.game.change_state(self.previous_state, call_enter=False)
-                elif event.key == pygame.K_UP:
-                    # Scroll up
-                    self.scroll_offset = max(0, self.scroll_offset - 1)
-                elif event.key == pygame.K_DOWN:
-                    # Scroll down
-                    max_scroll = max(0, len(self.cached_processes) - self.max_visible_processes)
-                    self.scroll_offset = min(max_scroll, self.scroll_offset + 1)
-    
+                elif event.key in (pygame.K_UP, pygame.K_DOWN):
+                    self._move_selection(-1 if event.key == pygame.K_UP else 1)
+                elif event.key == pygame.K_k and self.selected_pid is not None:
+                    if self.on_kill:
+                        pid = self.selected_pid
+                        self.on_kill(pid)
+                        self.status = f"sent SIGTERM to {pid}"
+                        self._update_data()
+                    else:
+                        self.status = "kill: not available here"
+
+    def _selected_index(self) -> int:
+        pids = [p.pid for p in self.cached_processes]
+        return pids.index(self.selected_pid) if self.selected_pid in pids else 0
+
+    def _move_selection(self, delta: int) -> None:
+        if not self.cached_processes:
+            return
+        idx = max(0, min(len(self.cached_processes) - 1, self._selected_index() + delta))
+        self.selected_pid = self.cached_processes[idx].pid
+        if idx < self.scroll_offset:
+            self.scroll_offset = idx
+        elif idx >= self.scroll_offset + self.max_visible_processes:
+            self.scroll_offset = idx - self.max_visible_processes + 1
+
     def _update_data(self):
         """Update the cached process data"""
         self.process_manager.update_cpu_usage()
         self.cached_processes = self.process_manager.get_processes()
+        if self.cached_processes and self.selected_pid not in {p.pid for p in self.cached_processes}:
+            self.selected_pid = self.cached_processes[0].pid
         
         # Calculate stats
         self.cached_stats['total_cpu'] = sum(p.cpu for p in self.cached_processes)
@@ -132,7 +154,10 @@ class TopViewerState(BaseState):
                 color = (200, 200, 200)  # Normal
             
             line = f"{proc.pid:<8} {proc.command:<20} {proc.cpu:<7.1f} {proc.mem:.1f}M{'':<5} {proc.user:<8} {proc.time_str:<10}"
-            self.renderer.write(2, row, line, color)
+            if proc.pid == self.selected_pid:
+                self.renderer.write(2, row, line.ljust(75), (10, 10, 15), bg=(0, 200, 120))
+            else:
+                self.renderer.write(2, row, line, color)
             row += 1
             
             if row >= self.renderer.char_height - 4:
@@ -140,14 +165,14 @@ class TopViewerState(BaseState):
         
         # Scroll indicator
         if len(processes) > self.max_visible_processes:
-            max_scroll = len(processes) - self.max_visible_processes
             scroll_info = f"Showing {self.scroll_offset + 1}-{min(self.scroll_offset + self.max_visible_processes, len(processes))} of {len(processes)}"
             self.renderer.write(2, self.renderer.char_height - 3, scroll_info, (150, 150, 150))
         
         # Help text
-        self.renderer.write(2, self.renderer.char_height - 2, 
-                          "Press 'q' to quit | UP/DOWN to scroll", 
-                          (100, 100, 255))
+        self.renderer.write(2, self.renderer.char_height - 2,
+                            "q quit | UP/DOWN select | k kill selected", (100, 100, 255))
+        if self.status:
+            self.renderer.write(2, self.renderer.char_height - 4, self.status, (255, 200, 0))
         
         self.renderer.render()
 

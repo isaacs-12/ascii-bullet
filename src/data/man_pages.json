@@ -145,7 +145,7 @@
   "",
   "DESCRIPTION",
   "       Interactive process viewer. Shows CPU usage, memory, and more.",
-  "       Press 'q' to quit, 'k' to kill a process."
+  "       Keys: UP/DOWN select a process, 'k' kills it, 'q' quits."
  ],
  "ps": [
   "PS(1)",

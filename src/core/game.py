@@ -6,6 +6,7 @@ import time
 
 import pygame
 
+from src.core.audio import Sfx
 from src.core.save_system import SaveSystem
 from src.core.terminal_renderer import TerminalRenderer
 
@@ -21,6 +22,7 @@ class Game:
         self.renderer = renderer or TerminalRenderer(width=160, height=75, cell_size=14)
         self.renderer.crt_enabled = bool(self.save_system.get_setting("crt", True))
         self.renderer.shake_enabled = bool(self.save_system.get_setting("screen_shake", True))
+        self.sfx = Sfx(enabled=bool(self.save_system.get_setting("sound", True)))
         theme = self.save_system.get_setting("theme")
         if theme:
             self.renderer.set_theme(theme)

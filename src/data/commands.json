@@ -677,5 +677,12 @@
   ],
   "path": "",
   "completion": "none"
+ },
+ "sound": {
+  "category": "system",
+  "usage": "sound [on|off]",
+  "summary": "Toggle sound effects",
+  "path": "/usr/bin/sound",
+  "completion": "none"
  }
 }

@@ -108,6 +108,9 @@ class MainMenuState(BaseState):
 
     def notify(self, title: str, body: str) -> None:
         self.toasts.append([title, body, TOAST_MS])
+        sfx = getattr(self.game, "sfx", None)
+        if sfx:
+            sfx.play("achievement")
 
     # Legacy hooks used by editor states.
     def _save_filesystem(self) -> None:

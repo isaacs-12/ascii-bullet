@@ -1936,7 +1936,10 @@ class VSCodeEditorState(BaseState):
         # Draw input line at bottom of terminal
         input_y = self.renderer.char_height - 2  # -2 for status bar
         prompt = self._get_terminal_prompt()
-        input_text = prompt + self.terminal_input_buffer
+        shell = getattr(self.previous_state, "shell", None)
+        secret = bool(shell and shell.session and shell.session.secret)
+        typed = "*" * len(self.terminal_input_buffer) if secret else self.terminal_input_buffer
+        input_text = prompt + typed
         max_width = self.renderer.char_width - editor_start_x
         if len(input_text) > max_width:
             # Show end of input with ellipsis
@@ -2168,7 +2171,8 @@ class VSCodeEditorState(BaseState):
     def _execute_terminal_command(self, command):
         """Run a command through the main shell, capturing output in this panel."""
         shell = getattr(self.previous_state, "shell", None)
-        self.terminal_output_lines.append(f"{self._get_terminal_prompt()}{command}")
+        hidden = bool(shell and shell.session and shell.session.secret)
+        self.terminal_output_lines.append(f"{self._get_terminal_prompt()}{'' if hidden else command}")
         if shell is None:
             self.terminal_output_lines.append(f"Command: {command}")
         else:

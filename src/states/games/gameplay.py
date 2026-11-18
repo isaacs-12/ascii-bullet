@@ -49,7 +49,12 @@ class GameplayState(BaseState):
     # -------------------------------------------------------- lifecycle
     def enter(self) -> None:
         self._previous_unlock = self.achievements.on_unlock
-        self.achievements.on_unlock = lambda a: self.toasts.append([a["name"], 3.0])
+        def on_unlock(a):
+            self.toasts.append([f"ACHIEVEMENT: {a['name']}", 3.0])
+            if getattr(self.game, "sfx", None):
+                self.game.sfx.play("achievement")
+
+        self.achievements.on_unlock = on_unlock
 
     def exit(self) -> None:
         self.achievements.on_unlock = getattr(self, "_previous_unlock", None)
@@ -118,6 +123,8 @@ class GameplayState(BaseState):
             else:
                 if key in (pygame.K_p, pygame.K_ESCAPE):
                     self.paused = True
+                    if getattr(self.game, "sfx", None):
+                        self.game.sfx.play("pause")
                 elif key in (pygame.K_x, pygame.K_SPACE, pygame.K_b):
                     self.bomb_pressed = True
 
@@ -156,8 +163,14 @@ class GameplayState(BaseState):
     def _handle_events(self) -> None:
         r = self.renderer
         w = self.world
+        sfx = getattr(self.game, "sfx", None)
         for ev in w.drain_events():
             k = ev.kind
+            if sfx:
+                sfx.play({"wave_start": "wave", "boss_warning": "warning", "boss_phase": "phase",
+                          "boss_defeated": "boss_defeated", "hit": "hit", "bomb": "bomb",
+                          "bomb_charged": "bomb_charged", "graze": "graze",
+                          "depleted": "depleted"}.get(k, ""))
             if k == "wave_start":
                 loop = ev.data["loop"]
                 sub = f"LOOP {loop + 1}  -  speed +{int((w.speed_mult - 1) * 100)}%" if loop else "get ready"

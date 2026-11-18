@@ -300,6 +300,21 @@ def shake(ctx):
         renderer.shake(6, 0.3)
 
 
+@command("sound")
+def sound(ctx):
+    sfx = getattr(ctx.game, "sfx", None)
+    if sfx is None:
+        ctx.err("sound: no audio device")
+        return 1
+    if ctx.args and ctx.args[0] in ("on", "off"):
+        sfx.enabled = ctx.args[0] == "on"
+    else:
+        sfx.enabled = not sfx.enabled
+    ctx.save.update_setting("sound", sfx.enabled)
+    ctx.out(f"sound {'on' if sfx.enabled else 'off'}")
+    sfx.play("achievement")
+
+
 @command("df")
 def df(ctx):
     used = ctx.fs._get_user_files_size()
@@ -340,8 +355,10 @@ def ps(ctx):
 def top(ctx):
     from src.states.unix_utils.top_viewer import TopViewerState
 
-    pm = ctx.shell.process_manager
-    ctx.launch(lambda game, back: TopViewerState(game, pm, back))
+    shell = ctx.shell
+    pm = shell.process_manager
+    ctx.launch(lambda game, back: TopViewerState(game, pm, back,
+                                                 on_kill=lambda pid: shell.run(f"kill {pid}", record=False)))
 
 
 @command("kill")

@@ -71,7 +71,7 @@ class Persona:
 
     def banner(self) -> list:
         cwd = self.shell.cwd_display()
-        return [self.styled(line.format(cwd=cwd[:20])) for line in self.data["banner"]]
+        return [self.styled(line.format(cwd=cwd[:21])) for line in self.data["banner"]]
 
     def spinner_line(self) -> str:
         word = random.choice(self.data["spinner"])

@@ -18,7 +18,7 @@ from typing import Protocol
 
 from src.core.achievements import AchievementTracker
 from src.core.puzzle_system import check_puzzles
-from src.shell.parser import ParseError, Redirect, parse
+from src.shell.parser import ParseError, parse
 from src.shell.registry import CommandSpec, build_registry, load_json
 from src.shell.text import Styled, wrap_line
 
@@ -107,9 +107,25 @@ class ExecContext:
 
     # ------------------------------------------------------------ effects
     def launch(self, factory: Callable) -> None:
-        """Switch to a full-screen state after this command line finishes."""
-        if self.interactive:
-            self.shell.pending_launch = factory
+        """Switch to a full-screen state after this command line finishes.
+
+        The state is constructed as the user running this command, so
+        `sudo vim /etc/shadow` can read what root can read.
+        """
+        if not self.interactive:
+            return
+        shell = self.shell
+        user = shell.fs.get_current_user()
+
+        def build(game, back):
+            previous = shell.fs.get_current_user()
+            shell.fs.set_user(user)
+            try:
+                return factory(game, back)
+            finally:
+                shell.fs.set_user(previous)
+
+        shell.pending_launch = build
 
     def achieve(self, achievement_id: str) -> None:
         self.shell.achievements.unlock(achievement_id)
@@ -243,12 +259,47 @@ class Shell:
             return 0
 
         try:
-            cmdlist = parse(line, self._env_view(), HOME, self._glob)
+            cmdlist = parse(line)
         except ParseError as e:
             self.ui.write(Styled.plain(f"blsh: {e}", "error"))
             self.last_status = 2
             return 2
 
+        if self._needs_password(cmdlist):
+            # Like real sudo, ask first; the whole line runs once authenticated.
+            self._prompt_for_password(lambda: self._execute(cmdlist))
+            return 0
+        return self._execute(cmdlist)
+
+    def _needs_password(self, cmdlist) -> bool:
+        if self.sudo_valid() or self.user == "root":
+            return False
+        for words in cmdlist.first_words():
+            if words and words[0] == "sudo" and len(words) > 1 and words[1] not in ("-k", "-K"):
+                return True
+        return False
+
+    def _prompt_for_password(self, on_success: Callable[[], object]) -> None:
+        attempts = {"n": 0}
+
+        def on_line(password: str) -> bool:
+            if password == SUDO_PASSWORD:
+                self.grant_sudo()
+                on_success()
+                return False
+            attempts["n"] += 1
+            if attempts["n"] >= 3:
+                self.ui.write(Styled.plain("sudo: 3 incorrect password attempts", "error"))
+                self.ui.write(Styled.plain("hint: people leave passwords in the strangest places. "
+                                           "like their shell history.", "dim"))
+                self.last_status = 1
+                return False
+            self.ui.write(Styled.plain("Sorry, try again.", "error"))
+            return True
+
+        self.session = InputSession(prompt=f"[sudo] password for {self.user}: ", on_line=on_line, secret=True)
+
+    def _execute(self, cmdlist) -> int:
         status = 0
         for idx, pipeline in enumerate(cmdlist.pipelines):
             if idx > 0:
@@ -303,12 +354,16 @@ class Shell:
         if last >= 2:
             self.achievements.unlock("pipe_dream")
         for i, cmd in enumerate(pipeline.commands):
-            argv = self._expand_alias(cmd.argv) if cmd.argv else cmd.argv
-            redirect_out = any(r.kind in (">", ">>") for r in cmd.redirects)
+            # Expand now, not at parse time, so `$?`, `$PWD` and globs see earlier commands.
+            env = self._env_view()
+            argv = cmd.expand(env, HOME, self._glob)
+            argv = self._expand_alias(argv) if argv else argv
+            redirects = [(r.kind, r.target(env, HOME)) for r in cmd.redirects]
+            redirect_out = any(kind in (">", ">>") for kind, _ in redirects)
             interactive = i == last and not redirect_out
-            for r in cmd.redirects:
-                if r.kind == "<":
-                    ok, lines = ExecContext(self, ["<"], None, False).read(r.target)
+            for kind, target in redirects:
+                if kind == "<":
+                    ok, lines = ExecContext(self, ["<"], None, False).read(target)
                     if not ok:
                         self.ui.write(Styled.plain(f"blsh: {lines}", "error"))
                         return 1
@@ -318,11 +373,20 @@ class Shell:
             else:
                 ctx = ExecContext(self, argv, stdin, interactive)
                 status = self._invoke(ctx)
-            self._apply_output_redirects(ctx, cmd.redirects)
+            self._apply_output_redirects(ctx, redirects)
             stdin = [str(line) for line in ctx.stdout][:MAX_PIPELINE_LINES]
         if self.pending_launch is not None:
             factory, self.pending_launch = self.pending_launch, None
             self.ui.launch(factory)
+        return status
+
+    def invoke_as_root(self, ctx: ExecContext, argv: list[str]) -> int:
+        """Run ``argv`` as root inside ``ctx``'s pipeline position (used by sudo)."""
+        inner = ExecContext(self, argv, ctx.stdin, ctx.interactive)
+        with self.as_root():
+            status = self._invoke(inner)
+        ctx.stdout.extend(inner.stdout)
+        ctx.stderr.extend(inner.stderr)
         return status
 
     def _invoke(self, ctx: ExecContext) -> int:
@@ -344,22 +408,22 @@ class Shell:
             self.achievements.on_command(spec.name, ctx.args)
         return status
 
-    def _apply_output_redirects(self, ctx: ExecContext, redirects: list[Redirect]) -> None:
+    def _apply_output_redirects(self, ctx: ExecContext, redirects: list[tuple[str, str]]) -> None:
         stdout_target = None
-        for r in redirects:
-            if r.kind in (">", ">>"):
-                stdout_target = r
-            elif r.kind in ("2>", "2>>"):
-                if r.target != "/dev/null":
-                    self._write_file(r.target, [str(x) for x in ctx.stderr], r.kind == "2>>", ctx)
+        for kind, target in redirects:
+            if kind in (">", ">>"):
+                stdout_target = (kind, target)
+            elif kind in ("2>", "2>>"):
+                if target != "/dev/null":
+                    self._write_file(target, [str(x) for x in ctx.stderr], kind == "2>>", ctx)
                 ctx.stderr = []
         for line in ctx.stderr:
             self.ui.write(line)
         ctx.stderr = []
         if stdout_target is not None:
-            if stdout_target.target != "/dev/null":
-                self._write_file(stdout_target.target, [str(x) for x in ctx.stdout],
-                                 stdout_target.kind == ">>", ctx)
+            kind, target = stdout_target
+            if target != "/dev/null":
+                self._write_file(target, [str(x) for x in ctx.stdout], kind == ">>", ctx)
             ctx.stdout = []
         elif ctx.interactive:
             self.flush_pending(ctx)
@@ -380,10 +444,7 @@ class Shell:
         if not fs.file_exists(path):
             ok, error = fs.create_file(path, lines)
         else:
-            if append:
-                ok_read, existing = fs.read_file(path)
-                lines = (list(existing) if ok_read else []) + lines
-            ok, error = fs.write_file(path, lines, append=False)
+            ok, error = fs.write_file(path, lines, append=append)
         if not ok:
             self.ui.write(Styled.plain(f"blsh: {error}", "error"))
             return False

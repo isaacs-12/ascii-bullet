@@ -7,9 +7,9 @@ module and `open()` that only touch the game's VirtualFileSystem.
 
 from __future__ import annotations
 
+import ast
 import operator
-import signal
-import threading
+import time
 import warnings
 from collections.abc import Callable
 
@@ -22,13 +22,57 @@ from RestrictedPython.Guards import (
     safer_getattr,
 )
 from RestrictedPython.PrintCollector import PrintCollector
+from RestrictedPython.transformer import RestrictingNodeTransformer
 
 from src.unix.virtual_python.virtual_file import VirtualFile
 from src.unix.virtual_python.virtual_os import StatResult, VirtualOS, VirtualOSPath
 
 
-class ScriptTimeoutError(Exception):
-    """Raised when a script exceeds its time budget."""
+class ScriptTimeoutError(BaseException):
+    """Raised when a script exceeds its time budget.
+
+    A BaseException so ``except Exception`` can't swallow it. A deadline check
+    runs at the top of every loop iteration and function call, outside any
+    ``try`` the script wrote there, so even a bare ``except:`` can't trap it.
+    """
+
+
+def _tick_call() -> ast.Expr:
+    return ast.Expr(ast.Call(func=ast.Name("_tick_", ast.Load()), args=[], keywords=[]))
+
+
+class _DeadlinePolicy(RestrictingNodeTransformer):
+    """RestrictedPython's checks, plus a `_tick_()` at the start of every loop/function body.
+
+    Scripts can't name `_tick_` themselves (underscore names are rejected), so
+    they can't shadow or call it.
+    """
+
+    def _inject(self, node):
+        tick = ast.copy_location(_tick_call(), node)
+        node.body.insert(0, ast.fix_missing_locations(tick))
+        return node
+
+    def visit_While(self, node):
+        return self._inject(super().visit_While(node))
+
+    def visit_For(self, node):
+        return self._inject(super().visit_For(node))
+
+    def visit_FunctionDef(self, node):
+        return self._inject(super().visit_FunctionDef(node))
+
+
+# The only attributes scripts may touch on the virtual modules. Everything
+# else (notably `.filesystem`, which could change the current user) is hidden.
+_PUBLIC_API = {
+    VirtualOS: {"getcwd", "listdir", "stat", "access", "remove", "unlink", "path",
+                "F_OK", "R_OK", "W_OK", "X_OK", "name", "sep", "linesep"},
+    VirtualOSPath: {"exists", "getsize", "isfile", "isdir"},
+    VirtualFile: {"read", "readline", "readlines", "write", "writelines", "close", "closed",
+                  "mode", "readable", "writable"},
+    StatResult: {"st_size", "st_mode", "st_uid", "exists"},
+}
 
 
 # Pure, side-effect free builtins that RestrictedPython's safe set omits.
@@ -97,10 +141,6 @@ class ScriptExecutor:
     def __init__(self):
         self.output_lines: list[str] = []
 
-    @staticmethod
-    def _timeout_handler(signum, frame):
-        raise ScriptTimeoutError("Script execution timed out")
-
     def _get_safe_globals(self, filesystem, output_callback, save_callback):
         def safe_open(filename, mode="r", *args, **kwargs):
             return VirtualFile(filesystem, filename, mode, save_callback)
@@ -108,11 +148,10 @@ class ScriptExecutor:
         virtual_os = VirtualOS(filesystem, save_callback)
 
         def custom_getattr(obj, name, default=None):
-            # Our virtual objects are safe by construction; everything else
-            # goes through RestrictedPython's guard.
-            if isinstance(obj, (VirtualOS, VirtualOSPath, VirtualFile, StatResult)):
-                if name.startswith("_"):
-                    raise AttributeError(name)
+            allowed = _PUBLIC_API.get(type(obj))
+            if allowed is not None:
+                if name not in allowed:
+                    raise AttributeError(f"'{type(obj).__name__}' has no attribute '{name}'")
                 return getattr(obj, name)
             return safer_getattr(obj, name, default)
 
@@ -164,7 +203,7 @@ class ScriptExecutor:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", SyntaxWarning)
             try:
-                result = compile_restricted_exec(code, filename="<script>")
+                result = compile_restricted_exec(code, filename="<script>", policy=_DeadlinePolicy)
             except SyntaxError as e:
                 return False, f"Syntax error: {e}"
         if result.errors:
@@ -172,10 +211,13 @@ class ScriptExecutor:
 
         safe_globals, printer = self._get_safe_globals(filesystem, output_callback, save_callback)
 
-        use_alarm = hasattr(signal, "SIGALRM") and threading.current_thread() is threading.main_thread()
-        if use_alarm:
-            old_handler = signal.signal(signal.SIGALRM, self._timeout_handler)
-            signal.alarm(self.MAX_EXECUTION_TIME)
+        deadline = time.monotonic() + self.MAX_EXECUTION_TIME
+
+        def tick() -> None:
+            if time.monotonic() > deadline:
+                raise ScriptTimeoutError("Script execution timed out")
+
+        safe_globals["_tick_"] = tick
         try:
             exec(result.code, safe_globals)
             return True, None
@@ -187,6 +229,3 @@ class ScriptExecutor:
             return False, f"Runtime error: {type(e).__name__}: {e}"
         finally:
             printer.flush_pending()
-            if use_alarm:
-                signal.alarm(0)
-                signal.signal(signal.SIGALRM, old_handler)

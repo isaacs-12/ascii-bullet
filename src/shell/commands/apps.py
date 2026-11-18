@@ -17,7 +17,8 @@ def _open_editor(ctx, editor_name: str):
     from src.states.unix_utils.editor import EditorState
 
     fs = ctx.fs
-    ctx.launch(lambda game, back: EditorState(game, fs, target, back, editor_name=editor_name))
+    user = fs.get_current_user()
+    ctx.launch(lambda game, back: EditorState(game, fs, target, back, editor_name=editor_name, run_as=user))
     return 0
 
 

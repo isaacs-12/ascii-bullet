@@ -6,6 +6,7 @@ import base64
 import binascii
 import codecs
 import colorsys
+import itertools
 import random
 
 from src.shell.commands.files import _split_flags
@@ -24,7 +25,10 @@ def echo(ctx):
         interpret = interpret or "e" in flag
     text = " ".join(args)
     if interpret:
-        text = codecs.decode(text, "unicode_escape")
+        try:
+            text = codecs.decode(text, "unicode_escape")
+        except UnicodeDecodeError:
+            pass  # like bash: leave malformed escapes as typed
     ctx.out(text)
 
 
@@ -170,6 +174,9 @@ def cut(ctx):
         if a.startswith("-c"):
             spec = a[2:] or (args[i + 1] if i + 1 < len(args) else "1")
             lo, _, hi = spec.partition("-")
+            if not (lo or "1").isdigit() or (hi and not hi.isdigit()):
+                ctx.err(f"cut: invalid byte/character position '{spec}'")
+                return 1
             chars = (int(lo or 1), int(hi) if hi else 10**6)
             i += 1 if a[2:] else 2
             continue
@@ -220,7 +227,7 @@ def seq(ctx):
         ctx.err("seq: step can't be zero")
         return 1
     values = range(start, end + (1 if step > 0 else -1), step)
-    ctx.out(*[str(v) for v in list(values)[:5000]])
+    ctx.out(*[str(v) for v in itertools.islice(values, 5000)])
 
 
 @command("yes")

@@ -10,7 +10,7 @@ from src.states.base_state import BaseState
 class EditorState(BaseState):
     """A basic text editor for the virtual filesystem"""
 
-    def __init__(self, game, filesystem, filename, previous_state, editor_name="vim"):
+    def __init__(self, game, filesystem, filename, previous_state, editor_name="vim", run_as=None):
         """
         Initialize the editor
 
@@ -25,6 +25,8 @@ class EditorState(BaseState):
         self.filesystem = filesystem
         self.filename = filename
         self.path = filesystem.abspath(filename)
+        # `sudo vim` must save as root even though the shell dropped privileges.
+        self.run_as = run_as or filesystem.get_current_user()
         self.previous_state = previous_state
         self.editor_name = editor_name
 
@@ -374,8 +376,10 @@ class EditorState(BaseState):
             self.message = "Error: Cannot save - file is read-only (permission denied)"
             return False
 
+        fs = self.filesystem
+        previous_user = fs.get_current_user()
+        fs.set_user(self.run_as)
         try:
-            fs = self.filesystem
             lines = [str(x) for x in self.lines]
             if fs.file_exists(self.path):
                 ok, error = fs.write_file(self.path, lines, append=False)
@@ -392,9 +396,11 @@ class EditorState(BaseState):
                 self.previous_state._save_filesystem()
 
             return True
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - show the error in the status line
             self.message = f"Error: {e}"
             return False
+        finally:
+            fs.set_user(previous_user)
 
     def update(self, dt):
         """Update editor state"""

@@ -545,7 +545,7 @@ def touch(ctx):
         return 1
     status = 0
     for target in ctx.args:
-        if ctx.fs.file_exists(target):
+        if ctx.fs.file_exists(target) or ctx.fs.is_directory_path(target):
             ctx.fs._update_timestamp(ctx.fs.abspath(target), "modify")
             continue
         ok, error = ctx.fs.create_file(target)

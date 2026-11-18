@@ -63,6 +63,8 @@ class VSCodeEditorState(BaseState):
 
         # File contents cache: full_path -> list of lines
         self.file_contents = {}
+        self._disk_snapshot = {}  # path -> lines as last loaded/saved (to tell dirty tabs apart)
+        self._reload_pending = False
 
         # Initialize with current directory expanded
         current_path = self.filesystem.get_pwd()
@@ -109,10 +111,28 @@ class VSCodeEditorState(BaseState):
         self._save_all_files()
 
     def _save_all_files(self):
-        """Save all open files"""
+        """Save open files that were edited here since they were loaded or saved."""
         for _filename, full_path in self.open_tabs:
-            if full_path in self.file_contents:
+            if full_path in self.file_contents and self._is_dirty(full_path):
                 self._save_file(full_path, self.file_contents[full_path])
+
+    def _is_dirty(self, full_path) -> bool:
+        return self.file_contents.get(full_path) != self._disk_snapshot.get(full_path)
+
+    def _reload_tabs_from_disk(self):
+        """Pick up changes made from the terminal panel (or apps it launched) to clean tabs."""
+        for _filename, full_path in self.open_tabs:
+            if self._is_dirty(full_path):
+                continue
+            ok, content = self.filesystem.read_file(full_path)
+            if ok:
+                lines = [str(x) for x in content] or [""]
+                self.file_contents[full_path] = lines
+                self._disk_snapshot[full_path] = list(lines)
+        if self.open_tabs and 0 <= self.active_tab_index < len(self.open_tabs):
+            lines = self.file_contents.get(self.open_tabs[self.active_tab_index][1], [""])
+            self.cursor_line = min(self.cursor_line, len(lines) - 1)
+            self.cursor_col = min(self.cursor_col, len(lines[self.cursor_line]))
 
     def _save_file(self, full_path, lines):
         """Save file content to filesystem"""
@@ -133,13 +153,14 @@ class VSCodeEditorState(BaseState):
         try:
             ok, current = self.filesystem.read_file(filename)
             if ok and [str(x) for x in current] == list(lines):
+                self._disk_snapshot[full_path] = list(lines)
                 return  # unchanged: don't turn a default file into a user-modified copy
             if self.filesystem.file_exists(filename):
-                # Update existing file
-                self.filesystem.write_file(filename, lines, append=False)
+                saved, _err = self.filesystem.write_file(filename, lines, append=False)
             else:
-                # Create new file
-                self.filesystem.create_file(filename, lines)
+                saved, _err = self.filesystem.create_file(filename, lines)
+            if saved:
+                self._disk_snapshot[full_path] = list(lines)
         except Exception as e:
             print(f"Error saving file {full_path}: {e}")
         finally:
@@ -638,6 +659,7 @@ class VSCodeEditorState(BaseState):
         self.open_tabs.append((filename, full_path))
         self.active_tab_index = len(self.open_tabs) - 1
         self.file_contents[full_path] = lines
+        self._disk_snapshot[full_path] = list(lines)
 
         # Reset editor state
         self.cursor_line = 0
@@ -1455,6 +1477,9 @@ class VSCodeEditorState(BaseState):
 
     def update(self, dt):
         """Update editor state"""
+        if self._reload_pending:
+            self._reload_pending = False
+            self._reload_tabs_from_disk()
         # Update status message timeout
         if self.status_message_timeout > 0:
             self.status_message_timeout -= 1
@@ -2181,6 +2206,7 @@ class VSCodeEditorState(BaseState):
                 shell.submit(command)
             finally:
                 shell.ui = original_ui
+            self._reload_tabs_from_disk()
             self.terminal_history = [h for h in shell.history[-100:]]
 
         # Auto-scroll to bottom
@@ -2213,6 +2239,7 @@ class _EmbeddedTerminalUI:
         self.editor.terminal_output_lines = []
 
     def launch(self, factory) -> None:
+        self.editor._reload_pending = True  # the app may edit files open in tabs
         self.editor.game.change_state(factory(self.editor.game, self.editor))
 
     def quit(self) -> None:

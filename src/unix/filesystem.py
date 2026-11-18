@@ -384,17 +384,11 @@ class VirtualFileSystem:
         """
         full_path = self._child(filename)
 
-        # Check if it's been deleted
+        # Player files win over the default tree (and over its deletion markers).
+        if full_path in self.user_created_files or full_path in self.user_modified_files:
+            return True
         if full_path in self.user_deleted_files:
             return False
-
-        # Check user-created files
-        if full_path in self.user_created_files:
-            return True
-
-        # Check user-modified files
-        if full_path in self.user_modified_files:
-            return True
 
         # Check default files
         current_dir = self.get_current_directory()
@@ -415,15 +409,20 @@ class VirtualFileSystem:
         Returns:
             tuple: (success, error_message or None)
         """
+        if not filename or filename.endswith('/') or filename in ('.', '..'):
+            return (False, f"{filename or '(empty)'}: Is a directory")
+        if self._directory_exists(self.current_path + [filename]):
+            return (False, f"{filename}: Is a directory")
         if self.file_exists(filename):
             return (False, f"File '{filename}' already exists")
 
         # Check size limit
-        content_size = len(content) if isinstance(content, str) else sum(len(line) for line in content)
+        content_size = len(content) if isinstance(content, str) else sum(len(str(line)) for line in content)
         if self._get_user_files_size() + content_size > self.MAX_USER_FILES_SIZE:
             return (False, "File size limit exceeded (16KB max for user files)")
 
         full_path = self._child(filename)
+        self.user_deleted_files.discard(full_path)  # re-creating a deleted default file
         self.user_created_files[full_path] = content if content else []
         # Set initial timestamps for new file
         now = datetime.now().isoformat()
@@ -465,19 +464,16 @@ class VirtualFileSystem:
         elif full_path in self.user_modified_files:
             existing = self.user_modified_files[full_path]
         elif self.file_exists(filename):
-            # Modifying a default file
-            success, file_content = self.read_file(filename)
-            if success:
-                existing = file_content
+            # Modifying a default file. Read it raw: appending only needs 'w'.
+            existing = self._extract_file_content(self.get_current_directory()['files'][filename])
 
         # Build new content
+        content_lines = content if isinstance(content, list) else [content]
         if append and existing:
-            if isinstance(existing, list):
-                new_content = existing + [content]
-            else:
-                new_content = existing + '\n' + content
+            existing_lines = existing if isinstance(existing, list) else [existing]
+            new_content = list(existing_lines) + list(content_lines)
         else:
-            new_content = [content] if not isinstance(content, list) else content
+            new_content = list(content_lines)
 
         # Check size (convert to string to handle non-string content)
         new_size = sum(len(str(line)) for line in new_content) if isinstance(new_content, list) else len(str(new_content))
@@ -525,19 +521,14 @@ class VirtualFileSystem:
         if self.current_user != "root" and self.current_user != owner:
             return (False, f"Permission denied: '{filename}' (operation not permitted)")
 
-        # Delete user-created files
-        if full_path in self.user_created_files:
-            del self.user_created_files[full_path]
-            return (True, None)
-        elif full_path in self.user_modified_files:
-            del self.user_modified_files[full_path]
-            return (True, None)
-        elif self.file_exists(filename):
-            # Mark default file as deleted (can be undone with rm save)
-            self.user_deleted_files.add(full_path)
-            return (True, None)
-        else:
+        if not self.file_exists(filename):
             return (False, f"File '{filename}' not found")
+        self.user_created_files.pop(full_path, None)
+        self.user_modified_files.pop(full_path, None)
+        if filename in self.get_current_directory().get('files', {}):
+            # A default file lives here too: hide it (undo with `rm save --dir`).
+            self.user_deleted_files.add(full_path)
+        return (True, None)
 
     @_path_aware
     def create_directory(self, dirname):
@@ -550,9 +541,14 @@ class VirtualFileSystem:
         Returns:
             tuple: (success, error_message or None)
         """
+        dirname = dirname.rstrip('/')
+        if not dirname or dirname in ('.', '..'):
+            return (False, "mkdir: invalid directory name")
         current_dir = self.get_current_directory()
         if 'dirs' in current_dir and dirname in current_dir['dirs']:
             return (False, f"Directory '{dirname}' already exists")
+        if self.file_exists(dirname):
+            return (False, f"'{dirname}': File exists")
 
         full_path = self._child(dirname)
         # Ensure trailing slash for directories
@@ -590,9 +586,12 @@ class VirtualFileSystem:
         if full_path_with_slash not in self.user_created_dirs:
             return (False, "Cannot delete: not a user-created directory")
 
-        # Check if empty
+        # Check if empty (files or subdirectories)
         for file_path in self.user_created_files:
             if file_path.startswith(full_path_with_slash):
+                return (False, "Directory not empty")
+        for dir_path in self.user_created_dirs:
+            if dir_path != full_path_with_slash and dir_path.startswith(full_path_with_slash):
                 return (False, "Directory not empty")
 
         self.user_created_dirs.remove(full_path_with_slash)
@@ -775,10 +774,7 @@ class VirtualFileSystem:
                 del self.file_owners[f]
 
         # Remove all user-created subdirectories
-        dirs_to_remove = [d for d in self.user_created_dirs if d.startswith(full_path_with_slash)]
-        dirs_to_remove.append(full_path_with_slash)
-        for d in dirs_to_remove:
-            self.user_created_dirs.remove(d)
+        self.user_created_dirs = [d for d in self.user_created_dirs if not d.startswith(full_path_with_slash)]
 
         return (True, None)
 
@@ -1192,6 +1188,7 @@ class VirtualFileSystem:
             self.user_deleted_files.add(source_full)
 
         # Create file at destination
+        self.user_deleted_files.discard(dest_full)
         self.user_created_files[dest_full] = content
 
         # Preserve permissions at destination (unless they're the default 'rwxrwxrwx')
@@ -1278,10 +1275,6 @@ class VirtualFileSystem:
         """Read a file (checks user files first, then defaults)"""
         full_path = self._child(filename)
 
-        # Check if file has been deleted
-        if full_path in self.user_deleted_files:
-            return (False, f"File '{filename}' not found")
-
         # Check user-modified files first
         if full_path in self.user_modified_files:
             # Check read permission for existing files
@@ -1305,6 +1298,8 @@ class VirtualFileSystem:
                 return (True, [content])
 
         # Fall back to default files
+        if full_path in self.user_deleted_files:
+            return (False, f"File '{filename}' not found")
         current_dir = self.get_current_directory()
 
         if 'files' in current_dir and filename in current_dir['files']:

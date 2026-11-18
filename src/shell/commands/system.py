@@ -6,7 +6,6 @@ import time
 from datetime import datetime
 
 from src.shell.registry import command, load_json
-from src.shell.shell import SUDO_PASSWORD, InputSession
 from src.shell.text import Styled
 
 # ----------------------------------------------------------------- builtins
@@ -405,15 +404,9 @@ def kill_process(ctx, pid: int) -> int:
 
 # ------------------------------------------------------------------ sudo
 
-def _run_as_root(ctx, line: str) -> None:
-    shell = ctx.shell
-    with shell.as_root():
-        shell.run(line, record=False)
-    ctx.achieve("sudo_user")
-
-
 @command("sudo")
 def sudo(ctx):
+    """Run a command as root. The shell asks for the password before the line runs."""
     shell = ctx.shell
     if not ctx.args:
         ctx.err("usage: sudo <command>")
@@ -421,49 +414,15 @@ def sudo(ctx):
     if ctx.args[0] in ("-k", "-K"):
         shell.sudo_until = 0
         return 0
-    if ctx.args[0] == "-i" or ctx.args[0] == "su":
-        line = None
-    else:
-        line = " ".join(_quote(a) for a in ctx.args)
-
-    def proceed() -> None:
-        if line is None:
-            ctx.fs.set_user("root")
-            shell.ui.write(Styled.plain("root shell. type 'exit' to drop privileges. be careful.", "error"))
-            ctx.achieve("sudo_user")
-        else:
-            _run_as_root(ctx, line)
-
-    if shell.sudo_valid() or ctx.fs.get_current_user() == "root":
-        shell.flush_pending(ctx)
-        proceed()
+    if not (shell.sudo_valid() or ctx.fs.get_current_user() == "root"):
+        ctx.err("sudo: a password is required")
+        return 1
+    ctx.achieve("sudo_user")
+    if ctx.args[0] in ("-i", "-s", "su"):
+        ctx.fs.set_user("root")
+        ctx.out(Styled.plain("root shell. type 'exit' to drop privileges. be careful.", "error"))
         return 0
-
-    attempts = {"n": 0}
-
-    def on_line(password: str) -> bool:
-        if password == SUDO_PASSWORD:
-            shell.grant_sudo()
-            proceed()
-            return False
-        attempts["n"] += 1
-        if attempts["n"] >= 3:
-            shell.ui.write(Styled.plain("sudo: 3 incorrect password attempts", "error"))
-            shell.ui.write(Styled.plain("hint: people leave passwords in the strangest places. "
-                                        "like their shell history.", "dim"))
-            return False
-        shell.ui.write(Styled.plain("Sorry, try again.", "error"))
-        return True
-
-    ctx.start_session(InputSession(prompt=f"[sudo] password for {ctx.fs.get_current_user()}: ",
-                                   on_line=on_line, secret=True))
-    return 0
-
-
-def _quote(arg: str) -> str:
-    if not arg or any(c in arg for c in " \t'\"|&;<>*?$"):
-        return "'" + arg.replace("'", "'\\''") + "'"
-    return arg
+    return shell.invoke_as_root(ctx, list(ctx.args))
 
 
 @command("su")

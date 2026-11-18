@@ -137,3 +137,34 @@ def test_theme_switch(game):
     assert game.renderer.theme_name == "amber"
     assert game.save_system.get_setting("theme") == "amber"
     frames(game, 1)
+
+
+def test_sudo_vim_saves_as_root(game):
+    from src.shell.shell import SUDO_PASSWORD
+
+    menu = ready(game)
+    type_line(game, "sudo vim /etc/motd")
+    type_line(game, SUDO_PASSWORD)
+    editor = game.current_state
+    assert editor is not menu and not editor.is_readonly
+    editor.lines = ["patched by root"]
+    assert editor._save_file()
+    assert game.current_state.filesystem.get_current_user() == "pilot"
+    menu.filesystem.set_user("root")
+    assert menu.filesystem.read_file("/etc/motd")[1] == ["patched by root"]
+    menu.filesystem.set_user("pilot")
+
+
+def test_vscode_tabs_pick_up_terminal_edits(game):
+    from src.states.unix_utils.vscode_editor import VSCodeEditorState
+
+    menu = ready(game)
+    menu.shell.run("echo original > notes.txt")
+    editor = VSCodeEditorState(game, menu.filesystem, menu)
+    game.change_state(editor)
+    path = menu.filesystem.abspath("notes.txt")
+    editor._open_file(path, "notes.txt")
+    editor._execute_terminal_command("echo appended >> notes.txt")
+    assert editor.file_contents[path] == ["original", "appended"]
+    game.change_state(menu)  # exit() saves dirty tabs only
+    assert menu.filesystem.read_file("notes.txt")[1] == ["original", "appended"]

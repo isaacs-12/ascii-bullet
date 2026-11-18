@@ -173,7 +173,12 @@ class GameplayState(BaseState):
                           "depleted": "depleted"}.get(k, ""))
             if k == "wave_start":
                 loop = ev.data["loop"]
-                sub = f"LOOP {loop + 1}  -  speed +{int((w.speed_mult - 1) * 100)}%" if loop else "get ready"
+                if loop:
+                    sub = f"LOOP {loop + 1}  -  speed +{int((w.speed_mult - 1) * 100)}%"
+                elif ev.data["wave"] == 1:
+                    sub = "hold SHIFT to focus  -  graze bullets for points  -  X bombs"
+                else:
+                    sub = "get ready"
                 self.banner = (f"WAVE {ev.data['wave']}", sub, 2.0)
             elif k == "boss_warning":
                 self.banner = ("WARNING", f"{ev.data['name']} approaching", 2.6)

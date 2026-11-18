@@ -186,8 +186,10 @@ class MainMenuState(BaseState):
             self.write(Styled.plain(line, "title" if i == 0 else "dim"))
         best = self.game.save_system.get_best_score()
         found, _total = self.shell.achievements.summary()
+        checkpoint = self.game.save_system.get_checkpoint_wave()
         if best or found:
-            self.write(Styled.plain(f"Best score: {best:,}   Achievements: {found}/{_total}", "dim"))
+            extra = f"   Checkpoint: wave {checkpoint} ('continue')" if checkpoint > 1 else ""
+            self.write(Styled.plain(f"Best score: {best:,}   Achievements: {found}/{_total}{extra}", "dim"))
             self.write("")
         self.game.save_system.mark_directory_visited(self.filesystem.get_pwd())
 

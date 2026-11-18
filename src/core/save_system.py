@@ -89,7 +89,7 @@ class SaveSystem:
         if not self.save_file.exists():
             return self._default_save_data()
         try:
-            with open(self.save_file, "r", encoding="utf-8") as f:
+            with open(self.save_file, encoding="utf-8") as f:
                 loaded = json.load(f)
         except (json.JSONDecodeError, OSError, UnicodeDecodeError):
             # Corrupted save: keep a copy for forensics and start fresh.

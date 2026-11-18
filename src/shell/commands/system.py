@@ -9,7 +9,6 @@ from src.shell.registry import command, load_json
 from src.shell.shell import SUDO_PASSWORD, InputSession
 from src.shell.text import Styled
 
-
 # ----------------------------------------------------------------- builtins
 
 @command("help")

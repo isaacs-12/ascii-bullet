@@ -12,14 +12,14 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 Handler = Callable[["object"], "int | None"]
 _HANDLERS: dict[str, Handler] = {}
-_AVAILABILITY: dict[str, Callable[["object"], bool]] = {}
+_AVAILABILITY: dict[str, Callable[[object], bool]] = {}
 
 
 @dataclass(frozen=True)
@@ -33,13 +33,13 @@ class CommandSpec:
     hidden: bool = False
     path: str = ""
     completion: str = "path"  # "path", "dir", "command", "none"
-    available: Callable[["object"], bool] | None = field(default=None, compare=False)
+    available: Callable[[object], bool] | None = field(default=None, compare=False)
 
     def is_available(self, shell) -> bool:
         return self.available is None or bool(self.available(shell))
 
 
-def command(name: str, available: Callable[["object"], bool] | None = None):
+def command(name: str, available: Callable[[object], bool] | None = None):
     """Register ``fn`` as the handler for ``name`` (metadata comes from JSON)."""
 
     def decorator(fn: Handler) -> Handler:
@@ -53,7 +53,7 @@ def command(name: str, available: Callable[["object"], bool] | None = None):
     return decorator
 
 
-@lru_cache(maxsize=None)
+@cache
 def load_json(name: str):
     with open(DATA_DIR / name, encoding="utf-8") as f:
         return json.load(f)

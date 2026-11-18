@@ -85,60 +85,60 @@ def _path_aware(method):
 
 class VirtualFileSystem:
     """A virtual filesystem with directories and files"""
-    
+
     # Maximum total size for user-created files (16KB)
     MAX_USER_FILES_SIZE = 16 * 1024
-    
+
     def __init__(self, saved_state=None):
         """
         Initialize the filesystem structure
-        
+
         Args:
             saved_state: Optional saved filesystem state to restore
         """
         # Current directory path as a list (e.g., ['home', 'pilot', 'blthll'])
         self.current_path = ['home', 'pilot', 'blthll']
-        
+
         # Load default filesystem
         self.filesystem = self._get_default_filesystem()
-        
+
         # Track user modifications separately
         self.user_created_files = {}  # path -> content
         self.user_created_dirs = []   # list of paths
         self.user_modified_files = {}  # path -> content
         self.user_deleted_files = set()  # paths of default files that have been deleted/moved
-        
+
         # File permissions: path -> permission string
         # Can be 3 characters (user only: "rwx") or 9 characters (user, group, other: "rwxrwxrwx")
         # Default: "rwx" for all files (user rwx)
         # Permissions can be overridden in the filesystem structure or via chmod
         self.file_permissions = {}  # path -> permission string like "rwx" or "rwxrwxrwx"
-        
+
         # File ownership system
         self.current_user = "pilot"  # Current user (can be "pilot" or "root")
         self.default_file_owners = self._get_default_file_owners()
         # Track ownership for moved/modified files (path -> owner)
         self.file_owners = {}  # path -> owner username
-        
+
         # File timestamps: path -> {'access': datetime, 'modify': datetime, 'change': datetime}
         # All timestamps are stored as ISO format strings for JSON serialization
         self.file_timestamps = {}  # path -> {'access': str, 'modify': str, 'change': str}
-        
+
         # Initialize default timestamps for existing files
         self._initialize_default_timestamps()
-        
+
         # Restore saved state if provided
         if saved_state:
             self._restore_state(saved_state)
-    
+
     def _extract_file_content(self, file_entry):
         """
         Extract content from a file entry in the filesystem structure.
         Supports both old format (list) and new format (dict with 'content').
-        
+
         Args:
             file_entry: Either a list of strings or a dict with 'content' key
-            
+
         Returns:
             list: File content as list of strings
         """
@@ -153,18 +153,18 @@ class VirtualFileSystem:
         else:
             # Fallback for string content
             return [file_entry]
-    
+
     def _extract_file_permissions(self, file_entry, filename, full_path):
         """
         Extract permissions from a file entry in the filesystem structure.
         Supports both old format (list, defaults to 'rwxrwxrwx') and new format (dict with 'permissions').
         Permissions can be 3-char (user only) or 9-char (user, group, other) format.
-        
+
         Args:
             file_entry: Either a list of strings or a dict with 'content' and optionally 'permissions'
             filename: Name of the file (for extension-based fallback, though we now default to rwxrwxrwx)
             full_path: Full path to the file
-            
+
         Returns:
             str: Permission string like "rwx" (3 chars) or "rwxrwxrwx" (9 chars)
         """
@@ -175,10 +175,10 @@ class VirtualFileSystem:
             if len(perms) == 3:
                 return perms + perms + perms  # user, group, other all same
             return perms
-        
+
         # Old format (list) or new format without permissions: default to 'rwxrwxrwx'
         return "rwxrwxrwx"
-    
+
     def _get_default_file_owners(self):
         """Owners declared in filesystem.json. Unlisted paths belong to the current user."""
         owners: dict[str, str] = {}
@@ -189,7 +189,7 @@ class VirtualFileSystem:
         """Initialize default timestamps for all existing files in the filesystem"""
         # Default timestamp (game start time)
         default_time = datetime.now().isoformat()
-        
+
         def _walk_filesystem(node, current_path=""):
             """Recursively walk filesystem to find all files"""
             if 'files' in node:
@@ -205,17 +205,17 @@ class VirtualFileSystem:
                 for dirname, dirnode in node['dirs'].items():
                     new_path = f"{current_path}/{dirname}" if current_path else f"/{dirname}"
                     _walk_filesystem(dirnode, new_path)
-        
+
         _walk_filesystem(self.filesystem, "")
-    
+
     def _get_timestamp(self, full_path, timestamp_type='access'):
         """
         Get a timestamp for a file
-        
+
         Args:
             full_path: Full path to the file
             timestamp_type: 'access', 'modify', or 'change'
-            
+
         Returns:
             str: ISO format timestamp string
         """
@@ -228,11 +228,11 @@ class VirtualFileSystem:
                 'change': now
             }
         return self.file_timestamps[full_path].get(timestamp_type, datetime.now().isoformat())
-    
+
     def _update_timestamp(self, full_path, timestamp_type='access'):
         """
         Update a timestamp for a file
-        
+
         Args:
             full_path: Full path to the file
             timestamp_type: 'access', 'modify', or 'change'
@@ -245,7 +245,7 @@ class VirtualFileSystem:
                 'change': now
             }
         self.file_timestamps[full_path][timestamp_type] = now
-    
+
     def _get_default_filesystem(self):
         """Fresh copy of the default tree from filesystem.json (top-level dirs)."""
         return copy.deepcopy(_load_default_tree()["dirs"])
@@ -332,7 +332,7 @@ class VirtualFileSystem:
     def get_pwd(self):
         """Get current working directory as string"""
         return '/' + '/'.join(self.current_path)
-    
+
     def change_directory(self, path):
         """Change directory. Returns (success, error_message)."""
         if not path:
@@ -353,7 +353,7 @@ class VirtualFileSystem:
         return self._node_at(path_list) is not None
 
     # === Mutable Filesystem Operations ===
-    
+
     def _get_user_files_size(self):
         """Calculate total size of user-created content"""
         total = 0
@@ -370,59 +370,59 @@ class VirtualFileSystem:
             else:
                 total += len(str(content))
         return total
-    
+
     @_path_aware
     def file_exists(self, filename):
         """
         Check if a file exists in the current directory
-        
+
         Args:
             filename: Name of file to check
-            
+
         Returns:
             bool: True if file exists, False otherwise
         """
         full_path = self._child(filename)
-        
+
         # Check if it's been deleted
         if full_path in self.user_deleted_files:
             return False
-        
+
         # Check user-created files
         if full_path in self.user_created_files:
             return True
-        
+
         # Check user-modified files
         if full_path in self.user_modified_files:
             return True
-        
+
         # Check default files
         current_dir = self.get_current_directory()
         if 'files' in current_dir and filename in current_dir['files']:
             return True
-        
+
         return False
-    
+
     @_path_aware
     def create_file(self, filename, content=""):
         """
         Create a new file in current directory
-        
+
         Args:
             filename: Name of file to create
             content: Initial content (string or list of strings)
-            
+
         Returns:
             tuple: (success, error_message or None)
         """
         if self.file_exists(filename):
             return (False, f"File '{filename}' already exists")
-        
+
         # Check size limit
         content_size = len(content) if isinstance(content, str) else sum(len(line) for line in content)
         if self._get_user_files_size() + content_size > self.MAX_USER_FILES_SIZE:
             return (False, "File size limit exceeded (16KB max for user files)")
-        
+
         full_path = self._child(filename)
         self.user_created_files[full_path] = content if content else []
         # Set initial timestamps for new file
@@ -433,22 +433,22 @@ class VirtualFileSystem:
             'change': now
         }
         return (True, None)
-    
+
     @_path_aware
     def write_file(self, filename, content, append=False):
         """
         Write content to a file (overwrites or appends)
-        
+
         Args:
             filename: Name of file
             content: Content to write (string)
             append: If True, append instead of overwrite
-            
+
         Returns:
             tuple: (success, error_message or None)
         """
         full_path = self._child(filename)
-        
+
         # Check write permission and ownership for existing files
         if self.file_exists(filename):
             if not self.check_permission(filename, 'w'):
@@ -457,7 +457,7 @@ class VirtualFileSystem:
             owner = self.get_file_owner(filename)
             if self.current_user != "root" and self.current_user != owner:
                 return (False, f"Permission denied: '{filename}' (operation not permitted)")
-        
+
         # Get existing content
         existing = None
         if full_path in self.user_created_files:
@@ -469,7 +469,7 @@ class VirtualFileSystem:
             success, file_content = self.read_file(filename)
             if success:
                 existing = file_content
-        
+
         # Build new content
         if append and existing:
             if isinstance(existing, list):
@@ -478,7 +478,7 @@ class VirtualFileSystem:
                 new_content = existing + '\n' + content
         else:
             new_content = [content] if not isinstance(content, list) else content
-        
+
         # Check size (convert to string to handle non-string content)
         new_size = sum(len(str(line)) for line in new_content) if isinstance(new_content, list) else len(str(new_content))
         # Subtract old content size since it's already counted in _get_user_files_size()
@@ -491,32 +491,32 @@ class VirtualFileSystem:
             old_size = sum(len(str(line)) for line in old_content) if isinstance(old_content, list) else len(str(old_content))
         if self._get_user_files_size() - old_size + new_size > self.MAX_USER_FILES_SIZE:
             return (False, "File size limit exceeded (16KB max for user files)")
-        
+
         # Write to appropriate location
         if full_path in self.user_created_files:
             self.user_created_files[full_path] = new_content
         else:
             self.user_modified_files[full_path] = new_content
-        
+
         # Update modify and change timestamps
         self._update_timestamp(full_path, 'modify')
         self._update_timestamp(full_path, 'change')
-        
+
         return (True, None)
-    
+
     @_path_aware
     def delete_file(self, filename):
         """
         Delete a file from current directory
-        
+
         Args:
             filename: Name of file to delete
-            
+
         Returns:
             tuple: (success, error_message or None)
         """
         full_path = self._child(filename)
-        
+
         # Check write permission and ownership (needed to delete)
         if not self.check_permission(filename, 'w'):
             return (False, f"Permission denied: '{filename}'")
@@ -524,7 +524,7 @@ class VirtualFileSystem:
         owner = self.get_file_owner(filename)
         if self.current_user != "root" and self.current_user != owner:
             return (False, f"Permission denied: '{filename}' (operation not permitted)")
-        
+
         # Delete user-created files
         if full_path in self.user_created_files:
             del self.user_created_files[full_path]
@@ -538,29 +538,29 @@ class VirtualFileSystem:
             return (True, None)
         else:
             return (False, f"File '{filename}' not found")
-    
+
     @_path_aware
     def create_directory(self, dirname):
         """
         Create a new directory in current location
-        
+
         Args:
             dirname: Name of directory to create
-            
+
         Returns:
             tuple: (success, error_message or None)
         """
         current_dir = self.get_current_directory()
         if 'dirs' in current_dir and dirname in current_dir['dirs']:
             return (False, f"Directory '{dirname}' already exists")
-        
+
         full_path = self._child(dirname)
         # Ensure trailing slash for directories
         if not full_path.endswith('/'):
             full_path = full_path + '/'
         if full_path in self.user_created_dirs:
             return (False, f"Directory '{dirname}' already exists")
-        
+
         self.user_created_dirs.append(full_path)
         # Set initial timestamps for new directory (use path without trailing slash for consistency)
         now = datetime.now().isoformat()
@@ -571,15 +571,15 @@ class VirtualFileSystem:
             'change': now
         }
         return (True, None)
-    
+
     @_path_aware
     def delete_directory(self, dirname):
         """
         Delete an empty user-created directory
-        
+
         Args:
             dirname: Name of directory to delete
-            
+
         Returns:
             tuple: (success, error_message or None)
         """
@@ -588,16 +588,16 @@ class VirtualFileSystem:
         full_path_with_slash = full_path if full_path.endswith('/') else full_path + '/'
 
         if full_path_with_slash not in self.user_created_dirs:
-            return (False, f"Cannot delete: not a user-created directory")
+            return (False, "Cannot delete: not a user-created directory")
 
         # Check if empty
         for file_path in self.user_created_files:
             if file_path.startswith(full_path_with_slash):
-                return (False, f"Directory not empty")
+                return (False, "Directory not empty")
 
         self.user_created_dirs.remove(full_path_with_slash)
         return (True, None)
-    
+
     def read_file_at_path(self, path):
         """
         Read a file given a relative or absolute path (e.g., 'data/secret/file.txt', '/var/log/boot.log').
@@ -834,7 +834,7 @@ class VirtualFileSystem:
         # Normalize directory paths (remove trailing slash for lookup)
         name = filename.rstrip('/')
         full_path = self._child(name)
-        
+
         # Check if it's a directory
         is_dir = False
         current_dir = self.get_current_directory()
@@ -842,11 +842,11 @@ class VirtualFileSystem:
             is_dir = True
         elif full_path + '/' in self.user_created_dirs:
             is_dir = True
-        
+
         # Check if file/directory exists
         if not is_dir and not self.file_exists(filename):
             return None
-        
+
         # Return custom permissions if set by user (via chmod) - highest priority
         if full_path in self.file_permissions:
             perms = self.file_permissions[full_path]
@@ -854,7 +854,7 @@ class VirtualFileSystem:
             if len(perms) == 3:
                 return perms + perms + perms
             return perms
-        
+
         # For directories, check default filesystem structure for permissions
         if is_dir and 'dirs' in current_dir and name in current_dir['dirs']:
             dir_entry = current_dir['dirs'][name]
@@ -864,78 +864,78 @@ class VirtualFileSystem:
                 if len(perms) == 3:
                     return perms + perms + perms
                 return perms
-        
+
         # Check default filesystem structure for file permissions
         if not is_dir and 'files' in current_dir and name in current_dir['files']:
             file_entry = current_dir['files'][name]
             return self._extract_file_permissions(file_entry, name, full_path)
-        
+
         # For user-created/modified files and directories, default to 'rwxrwxrwx'
         return "rwxrwxrwx"
-    
+
     @_path_aware
     def get_file_owner(self, filename):
         """
         Get the owner of a file or directory
-        
+
         Args:
             filename: Name of file or directory (may have trailing / for dirs)
-            
+
         Returns:
             str: Owner username ("pilot" or "root"), or current user if not specified
         """
         # Strip trailing slash if present (for directories)
         name = filename.rstrip('/')
-        
+
         # Handle current directory (.)
         if name == '.' or name == '':
             full_path = self.get_pwd()
         else:
             full_path = self._child(name)
-        
+
         # Normalize double slashes at root
         full_path = full_path.replace('//', '/')
-        
+
         # Check if file has a defined owner (moved/modified files)
         if full_path in self.file_owners:
             return self.file_owners[full_path]
-        
+
         # Check default file owners
         if full_path in self.default_file_owners:
             return self.default_file_owners[full_path]
-        
+
         # Default: files are owned by the current user
         return self.current_user
-    
+
     def set_user(self, username):
         """
         Set the current user (for sudo implementation)
-        
+
         Args:
             username: "pilot" or "root"
         """
         self.current_user = username
-    
+
     def get_current_user(self):
         """Get the current username"""
         return self.current_user
-    
+
     @_path_aware
     def set_permissions(self, filename, permissions):
         """
         Set file or directory permissions (chmod)
-        
+
         Args:
             filename: Name of file or directory (may have trailing / for dirs)
             permissions: Permission string or octal mode
-            
+
         Returns:
             tuple: (success, error_message or None)
         """
         # Normalize directory paths (remove trailing slash for storage)
         name = filename.rstrip('/')
         full_path = self._child(name)
-        
+
         # Check if file or directory exists
         current_dir = self.get_current_directory()
         is_dir = False
@@ -943,15 +943,15 @@ class VirtualFileSystem:
             is_dir = True
         elif full_path + '/' in self.user_created_dirs:
             is_dir = True
-        
+
         if not is_dir and not self.file_exists(filename):
             return (False, f"chmod: cannot access '{filename}': No such file or directory")
-        
+
         # Check ownership (only root or owner can chmod)
         owner = self.get_file_owner(filename)
         if self.current_user != "root" and self.current_user != owner:
             return (False, f"chmod: changing permissions of '{filename}': Operation not permitted")
-        
+
         # Parse permissions
         if not permissions.isdigit() and _SYMBOLIC_MODE.match(permissions.split(",")[0]) \
                 and not (len(permissions) in (3, 9) and all(c in 'rwx-' for c in permissions)):
@@ -970,14 +970,14 @@ class VirtualFileSystem:
                     user_mode = int(permissions[1])
                     group_mode = int(permissions[2])
                     other_mode = int(permissions[3])
-                    
+
                     def mode_to_str(mode):
                         s = ""
                         s += "r" if mode & 4 else "-"
                         s += "w" if mode & 2 else "-"
                         s += "x" if mode & 1 else "-"
                         return s
-                    
+
                     permissions = mode_to_str(user_mode) + mode_to_str(group_mode) + mode_to_str(other_mode)
                 elif len(permissions) == 1:
                     # Single digit - treat as user permissions only (3 characters)
@@ -992,14 +992,14 @@ class VirtualFileSystem:
                     user_mode = int(permissions[0])
                     group_mode = int(permissions[1])
                     other_mode = int(permissions[2])
-                    
+
                     def mode_to_str(mode):
                         s = ""
                         s += "r" if mode & 4 else "-"
                         s += "w" if mode & 2 else "-"
                         s += "x" if mode & 1 else "-"
                         return s
-                    
+
                     permissions = mode_to_str(user_mode) + mode_to_str(group_mode) + mode_to_str(other_mode)
                 else:
                     return (False, f"chmod: invalid mode: '{permissions}' (must be 1-4 digits)")
@@ -1013,22 +1013,22 @@ class VirtualFileSystem:
             pass
         else:
             return (False, f"chmod: invalid mode: '{permissions}'")
-        
+
         # Set permissions
         self.file_permissions[full_path] = permissions
         # Update change timestamp (metadata changed)
         self._update_timestamp(full_path, 'change')
         return (True, None)
-    
+
     @_path_aware
     def check_permission(self, filename, permission):
         """
         Check if user has a specific permission on a file
-        
+
         Args:
             filename: Name of file
             permission: 'r' for read, 'w' for write, 'x' for execute
-            
+
         Returns:
             bool: True if permission is granted, False otherwise
         """
@@ -1036,24 +1036,24 @@ class VirtualFileSystem:
         # Return False to be safe (caller should check file_exists first)
         if not self.file_exists(filename):
             return False
-        
+
         perms = self.get_permissions(filename)
         if perms is None:
             return False
-        
+
         perm_map = {'r': 0, 'w': 1, 'x': 2}
         if permission not in perm_map:
             return False
-        
+
         perm_index = perm_map[permission]
-        
+
         # Determine which permission set to check based on user's relationship to file
         owner = self.get_file_owner(filename)
-        
+
         # Root always has all permissions
         if self.current_user == "root":
             return True
-        
+
         # Check which permission group applies
         if len(perms) == 9:
             # 9-character format: user, group, other
@@ -1071,12 +1071,12 @@ class VirtualFileSystem:
                 check_index = perm_index
             else:
                 return False
-        
+
         # Check if permission is granted
         if check_index >= len(perms):
             return False
         return perms[check_index] == permission
-    
+
     def move_file(self, source, destination):
         """Move file; ``destination`` may be a path or an existing directory."""
         return self._move_file(source, self._resolve_destination(source, destination))
@@ -1085,54 +1085,53 @@ class VirtualFileSystem:
     def _move_file(self, source, destination):
         """
         Move or rename a file (including default system files)
-        
+
         Args:
             source: Source filename (in current directory)
             destination: Destination path (can include directory path or just filename)
-            
+
         Returns:
             tuple: (success, error_message or None)
         """
-        current_pwd = self.get_pwd()
         source_full = self._child(source)
-        
+
         # Check if source exists
         if not self.file_exists(source):
             return (False, f"File '{source}' not found")
-        
+
         # Check ownership (only root or owner can move)
         owner = self.get_file_owner(source)
         if self.current_user != "root" and self.current_user != owner:
             return (False, f"Permission denied: '{source}' (operation not permitted)")
-        
+
         # Read source file content
         success, content = self.read_file(source)
         if not success:
             return (False, f"Cannot read source file: {source}")
-        
+
         # Compute destination full path
         if '/' in destination:
             # Destination includes directory path
             dest_parts = destination.rsplit('/', 1)
             dest_dir = dest_parts[0] or '/'
             dest_filename = dest_parts[1]
-            
+
             # Validate destination directory exists
             old_path = self.current_path[:]
             success, error = self.change_directory(dest_dir)
             if not success:
                 self.current_path = old_path
                 return (False, f"Destination directory not found: {dest_dir}")
-            
+
             dest_full = self._child(dest_filename)
             self.current_path = old_path
-            
+
             # Check if destination file already exists
             old_path = self.current_path[:]
             self.change_directory(dest_dir)
             dest_exists = self.file_exists(dest_filename)
             self.current_path = old_path
-            
+
             if dest_exists:
                 return (False, f"Destination file already exists: {destination}")
         else:
@@ -1140,11 +1139,11 @@ class VirtualFileSystem:
             dest_full = self._child(destination)
             if self.file_exists(destination):
                 return (False, f"Destination file already exists: {destination}")
-        
+
         # Determine if source is a default file
-        is_default = (source_full not in self.user_created_files and 
+        is_default = (source_full not in self.user_created_files and
                      source_full not in self.user_modified_files)
-        
+
         # Get source permissions and ownership before moving
         source_permissions = None
         source_owner = None
@@ -1166,7 +1165,7 @@ class VirtualFileSystem:
             source_permissions = "rwxrwxrwx"
             # Get ownership
             source_owner = self.get_file_owner(source)
-        
+
         # Perform the move
         if source_full in self.user_created_files:
             del self.user_created_files[source_full]
@@ -1191,14 +1190,14 @@ class VirtualFileSystem:
         elif is_default:
             # Mark default file as deleted from source location
             self.user_deleted_files.add(source_full)
-        
+
         # Create file at destination
         self.user_created_files[dest_full] = content
-        
+
         # Preserve permissions at destination (unless they're the default 'rwxrwxrwx')
         if source_permissions and source_permissions != "rwxrwxrwx":
             self.file_permissions[dest_full] = source_permissions
-        
+
         # Preserve ownership at destination
         # Always preserve if source was root-owned (security: prevent privilege escalation)
         # Also preserve if source was explicitly set in file_owners
@@ -1209,23 +1208,23 @@ class VirtualFileSystem:
             # 3. Source owner differs from current user (non-default ownership)
             if source_owner == 'root' or source_full in self.file_owners or source_owner != self.current_user:
                 self.file_owners[dest_full] = source_owner
-        
+
         return (True, None)
-    
+
     def list_directory(self, show_hidden=False):
         """
         List contents of current directory (including user-created)
-        
+
         Args:
             show_hidden: If True, include files/directories starting with '.' (hidden files)
-        
+
         Returns:
             list: List of file and directory names
         """
         current_dir = self.get_current_directory()
         contents = []
         current_path = self.get_pwd().rstrip('/')
-        
+
         # Add default directories
         if 'dirs' in current_dir:
             for dir_name in sorted(current_dir['dirs'].keys()):
@@ -1233,7 +1232,7 @@ class VirtualFileSystem:
                 if dir_name not in ('files', 'dirs'):
                     if show_hidden or not dir_name.startswith('.'):
                         contents.append(f"{dir_name}/")
-        
+
         # Add user-created directories
         for dir_path in sorted(self.user_created_dirs):
             # Stored with a trailing slash ("/a/b/"); compare the parent of "/a/b".
@@ -1243,7 +1242,7 @@ class VirtualFileSystem:
                     if show_hidden or not dir_name.startswith('.'):
                         if f"{dir_name}/" not in contents:
                             contents.append(f"{dir_name}/")
-        
+
         # Add default files (excluding deleted ones)
         if 'files' in current_dir:
             for file_name in sorted(current_dir['files'].keys()):
@@ -1251,7 +1250,7 @@ class VirtualFileSystem:
                 if full_path not in self.user_deleted_files:
                     if show_hidden or not file_name.startswith('.'):
                         contents.append(file_name)
-        
+
         # Add user-created files in this directory
         for file_path in sorted(self.user_created_files.keys()):
             if '/' in file_path:
@@ -1261,7 +1260,7 @@ class VirtualFileSystem:
                     if show_hidden or not file_name.startswith('.'):
                         if file_name not in contents:
                             contents.append(file_name)
-        
+
         # Add user-modified files
         for file_path in sorted(self.user_modified_files.keys()):
             if '/' in file_path:
@@ -1271,18 +1270,18 @@ class VirtualFileSystem:
                     if show_hidden or not file_name.startswith('.'):
                         if file_name not in contents:
                             contents.append(file_name)
-        
+
         return contents
-    
+
     @_path_aware
     def read_file(self, filename):
         """Read a file (checks user files first, then defaults)"""
         full_path = self._child(filename)
-        
+
         # Check if file has been deleted
         if full_path in self.user_deleted_files:
             return (False, f"File '{filename}' not found")
-        
+
         # Check user-modified files first
         if full_path in self.user_modified_files:
             # Check read permission for existing files
@@ -1293,7 +1292,7 @@ class VirtualFileSystem:
                 return (True, content)
             else:
                 return (True, [content])
-        
+
         # Check user-created files
         if full_path in self.user_created_files:
             # Check read permission for existing files
@@ -1304,10 +1303,10 @@ class VirtualFileSystem:
                 return (True, content)
             else:
                 return (True, [content])
-        
+
         # Fall back to default files
         current_dir = self.get_current_directory()
-        
+
         if 'files' in current_dir and filename in current_dir['files']:
             # Check if file has been deleted
             if full_path in self.user_deleted_files:
@@ -1321,9 +1320,9 @@ class VirtualFileSystem:
         else:
             # File doesn't exist - don't check permissions for non-existent files
             return (False, f"cat: {filename}: No such file")
-    
+
     # === Save/Load State ===
-    
+
     def get_state(self):
         """Get filesystem state for saving"""
         return {
@@ -1337,7 +1336,7 @@ class VirtualFileSystem:
             'file_timestamps': self.file_timestamps,
             # Note: current_user is NOT saved - always start as 'pilot'
         }
-    
+
     def _restore_state(self, state):
         """Restore filesystem state from save"""
         # Note: current_path is never restored - always start in home directory
@@ -1359,7 +1358,7 @@ class VirtualFileSystem:
         else:
             # Initialize timestamps for restored files if not present
             self._initialize_default_timestamps()
-    
+
     def reset_to_defaults(self):
         """Reset filesystem to default state"""
         self.current_path = ['home', 'pilot', 'blthll']
@@ -1373,7 +1372,7 @@ class VirtualFileSystem:
         self.current_user = "pilot"
         # Re-initialize default timestamps
         self._initialize_default_timestamps()
-    
+
     def reset_filesystem_keep_user_files(self):
         """
         Reset filesystem to defaults but preserve user-created files.
@@ -1381,8 +1380,7 @@ class VirtualFileSystem:
         """
         # Save user-created files
         saved_files = {}
-        saved_dirs = []
-        
+
         # Collect all user-created files
         for path, content in self.user_created_files.items():
             # Extract just the filename
@@ -1391,23 +1389,23 @@ class VirtualFileSystem:
             # Save to blthll directory
             new_path = '/home/pilot/blthll/' + filename
             saved_files[new_path] = content
-        
+
         # Collect user-created directories (but we'll just keep files for now)
         # Directories are more complex, so we'll skip them for simplicity
-        
+
         # Reset everything
         self.reset_to_defaults()
-        
+
         # Restore user-created files to blthll
         self.user_created_files = saved_files
-    
+
     def _get_default_file_paths(self):
         """
         Build a map of all default files and their paths.
         Returns: dict mapping (normalized content) -> list of paths where that file exists
         """
         file_map = {}
-        
+
         def traverse(node, current_path):
             """Recursively traverse the filesystem tree"""
             if 'files' in node:
@@ -1417,22 +1415,22 @@ class VirtualFileSystem:
                     content = self._extract_file_content(file_entry)
                     # Normalize content for comparison
                     content_key = tuple(content)
-                    
+
                     if content_key not in file_map:
                         file_map[content_key] = []
                     file_map[content_key].append(full_path)
-            
+
             if 'dirs' in node:
                 for dirname, subnode in node['dirs'].items():
                     traverse(subnode, current_path + '/' + dirname)
-        
+
         # Traverse from root
         for top_level, node in self.filesystem.items():
             if isinstance(node, dict):
                 traverse(node, '/' + top_level)
-        
+
         return file_map
-    
+
     def _get_default_files_in_directory(self, dir_path):
         """
         Get list of default files that should exist in a directory.
@@ -1444,7 +1442,7 @@ class VirtualFileSystem:
         else:
             path_parts = dir_path.split('/')
             path_parts = [p for p in path_parts if p]
-        
+
         # Navigate to directory
         current = self.filesystem
         for part in path_parts:
@@ -1454,23 +1452,23 @@ class VirtualFileSystem:
                 current = current['dirs'][part]
             else:
                 return []  # Directory doesn't exist in default filesystem
-        
+
         # Get files from this directory
         files = []
         if 'files' in current:
             for filename in current['files'].keys():
                 full_path = '/' + '/'.join(path_parts) + '/' + filename
                 files.append((filename, full_path))
-        
+
         return files
-    
+
     def reset_directory(self, dir_path):
         """
         Reset a directory to its default state.
-        
+
         Args:
             dir_path: Directory path (e.g., '/home/pilot/blthll/data' or 'data')
-            
+
         Returns:
             tuple: (success: bool, error_message: str or None)
         """
@@ -1489,25 +1487,24 @@ class VirtualFileSystem:
                     return (False, "Already at root directory")
             else:
                 dir_path = current_pwd + '/' + dir_path
-        
+
         # Ensure path ends without trailing slash (except root)
         if dir_path != '/' and dir_path.endswith('/'):
             dir_path = dir_path[:-1]
-        
+
         # Get default files that should be in this directory
         default_files = self._get_default_files_in_directory(dir_path)
-        default_file_paths = {full_path for _, full_path in default_files}
-        
+
         # Build map of default file contents to their paths
         default_file_map = self._get_default_file_paths()
-        
+
         # 1. Remove all files in user_created_files in this directory
         # (These are either user-created files or moved default files)
         files_to_remove = []
         for file_path in list(self.user_created_files.keys()):
             if file_path.startswith(dir_path + '/'):
                 files_to_remove.append(file_path)
-        
+
         # For moved default files, we need to restore them to their original location
         # by removing them from user_deleted_files at the original path
         for file_path in files_to_remove:
@@ -1516,7 +1513,7 @@ class VirtualFileSystem:
                 content_key = tuple(content)
             else:
                 content_key = (content,)
-            
+
             # Check if this is a moved default file
             if content_key in default_file_map:
                 # Find the original location(s) of this file
@@ -1525,7 +1522,7 @@ class VirtualFileSystem:
                 for orig_path in original_paths:
                     if orig_path in self.user_deleted_files:
                         self.user_deleted_files.remove(orig_path)
-            
+
             # Remove from user_created_files
             del self.user_created_files[file_path]
             # Remove permissions if set
@@ -1534,18 +1531,18 @@ class VirtualFileSystem:
             # Remove ownership if set
             if file_path in self.file_owners:
                 del self.file_owners[file_path]
-        
+
         # 3. Restore deleted default files from this directory
-        for filename, full_path in default_files:
+        for _filename, full_path in default_files:
             if full_path in self.user_deleted_files:
                 self.user_deleted_files.remove(full_path)
-        
+
         # 4. Remove user-modified files in this directory (restore to default)
         modified_to_remove = []
         for file_path in list(self.user_modified_files.keys()):
             if file_path.startswith(dir_path + '/'):
                 modified_to_remove.append(file_path)
-        
+
         for file_path in modified_to_remove:
             del self.user_modified_files[file_path]
             # Remove permissions if set
@@ -1554,38 +1551,38 @@ class VirtualFileSystem:
             # Remove ownership if set
             if file_path in self.file_owners:
                 del self.file_owners[file_path]
-        
+
         # 5. Remove user-created directories in this directory
         dirs_to_remove = []
         for dir_path_item in self.user_created_dirs:
             if dir_path_item.startswith(dir_path + '/'):
                 dirs_to_remove.append(dir_path_item)
-        
+
         for dir_path_item in dirs_to_remove:
             self.user_created_dirs.remove(dir_path_item)
             # Remove directory permissions if set (without trailing slash)
             dir_path_no_slash = dir_path_item.rstrip('/')
             if dir_path_no_slash in self.file_permissions:
                 del self.file_permissions[dir_path_no_slash]
-        
+
         # 6. Remove permissions and ownership for files that were removed from user_created_files
         # (These were already removed above, but we need to clean up their metadata)
         perms_to_remove = []
         for perm_path in list(self.file_permissions.keys()):
             if perm_path.startswith(dir_path + '/'):
                 perms_to_remove.append(perm_path)
-        
+
         for perm_path in perms_to_remove:
             del self.file_permissions[perm_path]
-        
+
         # Also clean up ownership
         owners_to_remove = []
         for owner_path in list(self.file_owners.keys()):
             if owner_path.startswith(dir_path + '/'):
                 owners_to_remove.append(owner_path)
-        
+
         for owner_path in owners_to_remove:
             del self.file_owners[owner_path]
-        
+
         return (True, None)
 
